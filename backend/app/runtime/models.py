@@ -54,7 +54,7 @@ class AuditEvent(StrictModel):
     event_id: str
     action_id: str
     event_type: Literal[
-        "evaluation", "idempotent_replay", "commit", "release"
+        "evaluation", "idempotent_replay", "commit", "release", "order_created"
     ]
     decision: str
     occurred_at: datetime

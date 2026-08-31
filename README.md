@@ -46,3 +46,14 @@ It compares request-local gateway logic with cross-request enforcement,
 atomically reserves permitted amounts, and protects against correlated payment
 splitting, duplicate invoices, action-ID conflicts, and budget races. See
 `docs/runtime-demo.md` for the two-request demonstration.
+
+Runtime policies, reservations, commitments, evaluations, audit events, and
+provider executions are persisted in SQLite. The database defaults to
+`backend/arthaniyam.sqlite3` and can be changed with
+`ARTHANIYAM_DATABASE_PATH`.
+
+Payment execution defaults to a deterministic offline Razorpay simulator. To
+connect a Razorpay Test Mode account, copy `.env.example` to `.env`, set
+`RAZORPAY_MODE=test`, and provide test-only credentials. The adapter rejects
+live keys by design. A policy-approved active reservation is required before
+`POST /api/v1/executions/orders` will create an order.

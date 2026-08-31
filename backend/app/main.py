@@ -4,6 +4,9 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.payments.gateway import PaymentGatewayError, create_payment_gateway
+from app.payments.models import OrderExecutionRequest, OrderExecutionResult
+from app.payments.service import PaymentExecutionService
 from app.policy.models import PolicyDefinition
 from app.policy.verifier import (
     VerificationRequest,
@@ -22,6 +25,7 @@ from app.runtime.models import (
     RuntimeEvaluationRequest,
     RuntimeStateResponse,
 )
+from app.settings import settings
 
 
 app = FastAPI(
@@ -33,6 +37,9 @@ app = FastAPI(
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = PROJECT_ROOT / "frontend"
 app.mount("/assets", StaticFiles(directory=FRONTEND_ROOT), name="assets")
+payment_execution_service = PaymentExecutionService(
+    runtime_guard, create_payment_gateway(settings)
+)
 
 
 @app.get("/", include_in_schema=False)
@@ -43,6 +50,16 @@ def dashboard() -> FileResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/v1/system/capabilities")
+def system_capabilities() -> dict[str, str | bool]:
+    return {
+        "persistence": "sqlite",
+        "payment_mode": settings.razorpay_mode,
+        "real_money_enabled": False,
+        "live_keys_accepted": False,
+    }
 
 
 @app.post("/api/v1/policies/validate", response_model=PolicyDefinition)
@@ -115,3 +132,17 @@ def get_runtime_state(
         return runtime_guard.state(policy_id, version)
     except RuntimeActionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/executions/orders", response_model=OrderExecutionResult)
+def create_provider_order(request: OrderExecutionRequest) -> OrderExecutionResult:
+    """Create one idempotent provider order for an approved reservation."""
+
+    try:
+        return payment_execution_service.create_order(request)
+    except RuntimeActionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PaymentGatewayError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

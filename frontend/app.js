@@ -1,4 +1,4 @@
-const ui={status:document.querySelector("#system-status"),verifyButton:document.querySelector("#verify-button"),proofResult:document.querySelector("#proof-result"),runButton:document.querySelector("#run-attack-button"),comparison:document.querySelector("#comparison-board"),availableBudget:document.querySelector("#available-budget"),availableAmount:document.querySelector("#available-amount"),reservedAmount:document.querySelector("#reserved-amount"),committedAmount:document.querySelector("#committed-amount"),budgetProgress:document.querySelector("#budget-progress"),auditList:document.querySelector("#audit-list"),eventCount:document.querySelector("#event-count"),toast:document.querySelector("#toast")};
+const ui={status:document.querySelector("#system-status"),verifyButton:document.querySelector("#verify-button"),proofResult:document.querySelector("#proof-result"),runButton:document.querySelector("#run-attack-button"),comparison:document.querySelector("#comparison-board"),executionReceipt:document.querySelector("#execution-receipt"),availableBudget:document.querySelector("#available-budget"),availableAmount:document.querySelector("#available-amount"),reservedAmount:document.querySelector("#reserved-amount"),committedAmount:document.querySelector("#committed-amount"),budgetProgress:document.querySelector("#budget-progress"),auditList:document.querySelector("#audit-list"),eventCount:document.querySelector("#event-count"),toast:document.querySelector("#toast")};
 const inPaise=rupees=>Math.round(Number(rupees)*100);
 const inRupees=paise=>new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:paise%100===0?0:2}).format(paise/100);
 
@@ -34,8 +34,9 @@ async function runAttack(){
     const runId=`run-${Date.now()}`;const policy=readPolicy(runId);
     const first=await api("/api/v1/runtime/evaluate",{method:"POST",body:JSON.stringify({policy,action:paymentAction(runId,1)})});
     const second=await api("/api/v1/runtime/evaluate",{method:"POST",body:JSON.stringify({policy,action:paymentAction(runId,2)})});
+    const execution=await api("/api/v1/executions/orders",{method:"POST",body:JSON.stringify({policy_id:policy.policy_id,policy_version:1,action_id:first.action_id})});
     const state=await api(`/api/v1/runtime/policies/${encodeURIComponent(policy.policy_id)}/state?version=1`);
-    renderComparison([first,second]);renderRuntime(state,policy.budget.monthly_limit);showToast("Sequence evaluated. Cross-request bypass detected.");
+    renderComparison([first,second]);renderExecution(execution);renderRuntime(state,policy.budget.monthly_limit);showToast("Sequence evaluated and approved order created.");
   }catch(error){showToast(error.message,true)}finally{setBusy(ui.runButton,false)}
 }
 
@@ -45,6 +46,8 @@ function renderComparison(results){
   const rows=results.map((result,index)=>`<div class="comparison-row"><div><small>Request</small><strong>0${index+1} · ${inRupees(900000)}</strong></div><div><span class="decision ${decisionClass(result.naive_gateway.decision)}">${decisionLabel(result.naive_gateway.decision)}</span><span class="reason-text">${result.naive_gateway.explanation}</span></div><div><span class="decision ${decisionClass(result.arthaniyam.decision)}">${decisionLabel(result.arthaniyam.decision)}</span><span class="reason-text">${result.arthaniyam.explanation}</span></div><div><small>Correlated total</small><strong>${inRupees(result.correlated_amount)}</strong></div></div>`).join("");
   ui.comparison.innerHTML=`<div class="comparison-head"><span>Request</span><span>Naive gateway</span><span>ArthaNiyam</span><span>Shared state</span></div>${rows}`;
 }
+
+function renderExecution(execution){const order=execution.order;ui.executionReceipt.classList.add("executed");ui.executionReceipt.innerHTML=`<span class="receipt-icon">✓</span><div><small>${order.provider} · ${order.mode} mode</small><strong>Policy-approved order created for ${inRupees(order.amount)}</strong></div><code>${order.order_id}</code>`}
 
 function renderRuntime(runtimeState,monthlyLimit){
   const state=runtimeState.state;const used=state.reserved_amount+state.committed_amount;const percent=monthlyLimit?Math.min(100,used/monthlyLimit*100):0;
