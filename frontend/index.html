@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ArthaNiyam verifies financial policy before autonomous systems move money." />
+    <title>ArthaNiyam — Financial policy control plane</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="ArthaNiyam home">
+        <span class="brand-mark">अ</span><span><strong>ArthaNiyam</strong><small>Financial policy control plane</small></span>
+      </a>
+      <nav aria-label="Primary navigation"><a href="#policy-studio">Policy studio</a><a href="#attack-lab">Attack lab</a><a href="#audit-trail">Audit trail</a></nav>
+      <div class="system-status" id="system-status" role="status"><span class="status-dot"></span><span>Checking runtime</span></div>
+    </header>
+
+    <main id="top">
+      <section class="hero section-shell">
+        <div class="eyebrow"><span>Open track prototype</span> / Razorpay AI Buildathon</div>
+        <div class="hero-grid">
+          <div>
+            <h1>Verify intent.<br /><em>Then</em> move money.</h1>
+            <p class="hero-copy">ArthaNiyam sees the financial outcome that isolated API checks miss. It models policy, searches for unsafe action sequences, and guards every live commitment with shared state.</p>
+            <div class="hero-actions"><a class="button button-primary" href="#attack-lab">Run live attack</a><a class="button button-secondary" href="/docs">Explore API</a></div>
+          </div>
+          <aside class="hero-proof" aria-label="Core invariant">
+            <div class="proof-label">Invariant 03</div>
+            <p>Correlated commitments above the threshold require valid approval.</p>
+            <div class="proof-flow"><span>₹9,000</span><span class="flow-plus">+</span><span>₹9,000</span><span class="flow-arrow">→</span><strong>Review</strong></div>
+            <small>One request looks safe. The sequence does not.</small>
+          </aside>
+        </div>
+      </section>
+
+      <section class="metrics-strip" aria-label="Platform capabilities">
+        <article><span class="metric-index">01</span><strong>Bounded verification</strong><small>Z3-generated counterexamples</small></article>
+        <article><span class="metric-index">02</span><strong>Atomic reservations</strong><small>Concurrency-safe budget control</small></article>
+        <article><span class="metric-index">03</span><strong>Cross-request memory</strong><small>Vendor and purpose correlation</small></article>
+        <article><span class="metric-index">04</span><strong>Replayable evidence</strong><small>Every decision leaves an audit event</small></article>
+      </section>
+
+      <section class="workspace section-shell" id="policy-studio">
+        <div class="section-heading"><div><div class="eyebrow">01 / Policy studio</div><h2>Define the financial boundary</h2></div><p>Values are entered in rupees and converted to paise at the policy boundary.</p></div>
+        <div class="studio-grid">
+          <form class="panel policy-panel" id="policy-form">
+            <div class="panel-heading"><div><span class="panel-kicker">Procurement policy</span><h3>Autonomous purchasing</h3></div><span class="version-chip">v1</span></div>
+            <label><span>Monthly budget</span><span class="input-wrap"><b>₹</b><input id="monthly-limit" type="number" min="1" value="50000" /></span></label>
+            <label><span>Per-transaction limit</span><span class="input-wrap"><b>₹</b><input id="transaction-limit" type="number" min="1" value="10000" /></span></label>
+            <label><span>Approval required above</span><span class="input-wrap"><b>₹</b><input id="approval-threshold" type="number" min="0" value="10000" /></span></label>
+            <label><span>Correlation window</span><span class="input-wrap"><input id="window-hours" type="number" min="1" max="720" value="24" /><b>hours</b></span></label>
+            <div class="policy-tags"><span>Vendor allowlist</span><span>Purpose correlation</span><span>Invoice uniqueness</span></div>
+            <button class="button button-secondary button-full" type="button" id="verify-button"><span>Search policy for counterexample</span><span aria-hidden="true">↗</span></button>
+          </form>
+          <section class="panel proof-panel" id="proof-result" aria-live="polite">
+            <div class="empty-state"><div class="radar" aria-hidden="true"><span></span></div><span class="panel-kicker">Model checker ready</span><h3>Ask the solver to break your policy.</h3><p>ArthaNiyam will search for the smallest sequence of individually valid actions that creates an invalid combined outcome.</p></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="attack-section" id="attack-lab">
+        <div class="section-heading"><div><div class="eyebrow">02 / Live attack lab</div><h2>Watch local checks lose context</h2></div><p>Two requests. Same vendor and purpose. Different invoices. Each appears safe alone.</p></div>
+        <div class="attack-controls">
+          <article class="payment-card"><span class="payment-number">Request 01</span><div class="payment-amount">₹9,000</div><dl><div><dt>Vendor</dt><dd>Vector Systems</dd></div><div><dt>Purpose</dt><dd>Office laptops</dd></div><div><dt>Invoice</dt><dd>INV-A01</dd></div></dl></article>
+          <div class="sequence-line" aria-hidden="true"><span>then</span></div>
+          <article class="payment-card"><span class="payment-number">Request 02</span><div class="payment-amount">₹9,000</div><dl><div><dt>Vendor</dt><dd>Vector Systems</dd></div><div><dt>Purpose</dt><dd>Office laptops</dd></div><div><dt>Invoice</dt><dd>INV-A02</dd></div></dl></article>
+          <button class="run-button" id="run-attack-button" type="button"><span class="run-icon">▶</span><span><strong>Run sequence</strong><small>Evaluate both requests live</small></span></button>
+        </div>
+        <div class="comparison-board" id="comparison-board"><div class="comparison-head"><span>Request</span><span>Naive gateway</span><span>ArthaNiyam</span><span>Shared state</span></div><div class="comparison-placeholder">Run the payment sequence to compare both authorization models.</div></div>
+      </section>
+
+      <section class="runtime-section section-shell" id="audit-trail">
+        <div class="section-heading"><div><div class="eyebrow">03 / Runtime evidence</div><h2>Inspect the decision, not just the response</h2></div></div>
+        <div class="runtime-grid">
+          <article class="panel budget-panel"><div class="panel-heading"><div><span class="panel-kicker">Budget position</span><h3 id="available-budget">₹50,000 available</h3></div><span class="live-chip">Live</span></div><div class="budget-bar"><span id="budget-progress"></span></div><div class="budget-legend"><div><span class="legend-dot reserved"></span><small>Reserved</small><strong id="reserved-amount">₹0</strong></div><div><span class="legend-dot committed"></span><small>Committed</small><strong id="committed-amount">₹0</strong></div><div><span class="legend-dot available"></span><small>Available</small><strong id="available-amount">₹50,000</strong></div></div></article>
+          <article class="panel audit-panel"><div class="panel-heading"><div><span class="panel-kicker">Decision timeline</span><h3>Audit trail</h3></div><span class="event-count" id="event-count">0 events</span></div><div class="audit-list" id="audit-list"><div class="audit-empty">Runtime events will appear here after the attack runs.</div></div></article>
+        </div>
+      </section>
+    </main>
+    <footer><div class="brand footer-brand"><span class="brand-mark">अ</span><span><strong>ArthaNiyam</strong><small>अर्थ + नियम · money governed by rules</small></span></div><p>Built for the Razorpay AI Buildathon · Open Innovation Track</p></footer>
+    <div class="toast" id="toast" role="alert"></div>
+  </body>
+</html>

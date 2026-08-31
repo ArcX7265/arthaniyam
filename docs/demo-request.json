@@ -1,0 +1,21 @@
+{
+  "policy": {
+    "policy_id": "procurement-demo",
+    "version": 1,
+    "name": "Procurement Demo",
+    "currency": "INR",
+    "budget": {
+      "monthly_limit": 5000000,
+      "per_transaction_limit": 1000000
+    },
+    "approval": {
+      "required_above": 1000000,
+      "approver_count": 1
+    },
+    "correlation": {
+      "window_hours": 24,
+      "group_by": ["vendor", "purpose", "invoice"]
+    }
+  },
+  "max_actions": 4
+}
