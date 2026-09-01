@@ -6,6 +6,7 @@ import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Iterator
 
@@ -25,6 +26,14 @@ DEFAULT_DATABASE_PATH = Path(
         str(Path(__file__).resolve().parents[2] / "arthaniyam.sqlite3"),
     )
 )
+AUDIT_GENESIS_HASH = "sha256:" + "0" * 64
+
+
+def audit_event_hash(previous_hash: str, event_json: str) -> str:
+    canonical = json.dumps(
+        json.loads(event_json), sort_keys=True, separators=(",", ":")
+    )
+    return "sha256:" + sha256(f"{previous_hash}|{canonical}".encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -125,6 +134,25 @@ class SQLiteRuntimeRepository:
                     event_json TEXT NOT NULL,
                     FOREIGN KEY (policy_id, version)
                         REFERENCES policies(policy_id, version)
+                );
+
+                CREATE TABLE IF NOT EXISTS audit_chain_entries (
+                    event_id TEXT PRIMARY KEY,
+                    policy_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    previous_hash TEXT NOT NULL,
+                    event_hash TEXT NOT NULL,
+                    UNIQUE(policy_id, version, sequence),
+                    FOREIGN KEY (event_id) REFERENCES audit_events(event_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS audit_chain_heads (
+                    policy_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    head_hash TEXT NOT NULL,
+                    PRIMARY KEY (policy_id, version)
                 );
 
                 CREATE TABLE IF NOT EXISTS provider_executions (
@@ -240,6 +268,47 @@ class SQLiteRuntimeRepository:
                 connection.execute(
                     "ALTER TABLE provider_executions ADD COLUMN provider_order_id TEXT"
                 )
+            self._backfill_audit_chain(connection)
+
+    @staticmethod
+    def _backfill_audit_chain(connection: sqlite3.Connection) -> None:
+        chain_count = connection.execute(
+            "SELECT COUNT(*) AS count FROM audit_chain_entries"
+        ).fetchone()["count"]
+        if chain_count:
+            return
+        rows = connection.execute(
+            """SELECT event_id, policy_id, version, event_json
+            FROM audit_events ORDER BY rowid"""
+        ).fetchall()
+        heads: dict[tuple[str, int], tuple[int, str]] = {}
+        for row in rows:
+            key = (row["policy_id"], row["version"])
+            sequence, previous_hash = heads.get(key, (0, AUDIT_GENESIS_HASH))
+            sequence += 1
+            event_hash = audit_event_hash(previous_hash, row["event_json"])
+            connection.execute(
+                """INSERT INTO audit_chain_entries(
+                    event_id, policy_id, version, sequence,
+                    previous_hash, event_hash
+                ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    row["event_id"],
+                    row["policy_id"],
+                    row["version"],
+                    sequence,
+                    previous_hash,
+                    event_hash,
+                ),
+            )
+            heads[key] = (sequence, event_hash)
+        for (policy_id, version), (count, head_hash) in heads.items():
+            connection.execute(
+                """INSERT INTO audit_chain_heads(
+                    policy_id, version, event_count, head_hash
+                ) VALUES (?, ?, ?, ?)""",
+                (policy_id, version, count, head_hash),
+            )
 
     def reset(self) -> None:
         with self._connect() as connection:
@@ -254,6 +323,8 @@ class SQLiteRuntimeRepository:
             connection.execute("DELETE FROM webhook_events")
             connection.execute("DELETE FROM payment_confirmations")
             connection.execute("DELETE FROM provider_executions")
+            connection.execute("DELETE FROM audit_chain_heads")
+            connection.execute("DELETE FROM audit_chain_entries")
             connection.execute("DELETE FROM audit_events")
             connection.execute("DELETE FROM evaluations")
             connection.execute("DELETE FROM ledger_entries")
@@ -724,13 +795,76 @@ class SQLiteRuntimeRepository:
 
     def append_audit(self, policy_id: str, version: int, event: AuditEvent) -> None:
         with self._connect() as connection:
+            head = connection.execute(
+                """SELECT event_count, head_hash FROM audit_chain_heads
+                WHERE policy_id = ? AND version = ?""",
+                (policy_id, version),
+            ).fetchone()
+            sequence = int(head["event_count"]) + 1 if head else 1
+            previous_hash = head["head_hash"] if head else AUDIT_GENESIS_HASH
+            event_json = event.model_dump_json()
+            event_hash = audit_event_hash(previous_hash, event_json)
             connection.execute(
                 """
                 INSERT INTO audit_events(event_id, policy_id, version, event_json)
                 VALUES (?, ?, ?, ?)
                 """,
-                (event.event_id, policy_id, version, event.model_dump_json()),
+                (event.event_id, policy_id, version, event_json),
             )
+            connection.execute(
+                """INSERT INTO audit_chain_entries(
+                    event_id, policy_id, version, sequence,
+                    previous_hash, event_hash
+                ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    event.event_id,
+                    policy_id,
+                    version,
+                    sequence,
+                    previous_hash,
+                    event_hash,
+                ),
+            )
+            connection.execute(
+                """INSERT INTO audit_chain_heads(
+                    policy_id, version, event_count, head_hash
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(policy_id, version) DO UPDATE SET
+                    event_count = excluded.event_count,
+                    head_hash = excluded.head_hash""",
+                (policy_id, version, sequence, event_hash),
+            )
+
+    def audit_chain_rows(self, policy_id: str, version: int) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT chain.event_id, chain.sequence, chain.previous_hash,
+                chain.event_hash, events.event_json
+                FROM audit_chain_entries AS chain
+                LEFT JOIN audit_events AS events ON events.event_id = chain.event_id
+                WHERE chain.policy_id = ? AND chain.version = ?
+                ORDER BY chain.sequence""",
+                (policy_id, version),
+            ).fetchall()
+        return rows
+
+    def audit_chain_head(self, policy_id: str, version: int) -> tuple[int, str] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT event_count, head_hash FROM audit_chain_heads
+                WHERE policy_id = ? AND version = ?""",
+                (policy_id, version),
+            ).fetchone()
+        return (int(row["event_count"]), row["head_hash"]) if row else None
+
+    def audit_event_count(self, policy_id: str, version: int) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT COUNT(*) AS count FROM audit_events
+                WHERE policy_id = ? AND version = ?""",
+                (policy_id, version),
+            ).fetchone()
+        return int(row["count"])
 
     def list_audit(self, policy_id: str, version: int) -> list[AuditEvent]:
         with self._connect() as connection:

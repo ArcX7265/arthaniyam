@@ -151,6 +151,13 @@ provider executions are persisted in SQLite. The database defaults to
 `backend/arthaniyam.sqlite3` and can be changed with
 `ARTHANIYAM_DATABASE_PATH`.
 
+Every runtime audit event is also appended to a SHA-256 hash chain with a
+persisted head checkpoint. `GET
+/api/v1/runtime/policies/{policy_id}/audit-integrity` detects changed event
+content, missing or reordered links, sequence gaps, and tail deletion against
+that checkpoint. This provides tamper evidence inside the prototype; external
+notarization of the checkpoint is outside the current boundary.
+
 Payment execution defaults to a deterministic offline Razorpay simulator. To
 connect a Razorpay Test Mode account, copy `.env.example` to `.env`, set
 `RAZORPAY_MODE=test`, and provide test-only credentials. The adapter rejects

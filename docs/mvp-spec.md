@@ -43,6 +43,10 @@ Counterfactual rollout simulation replays at most 200 actions in isolated
 current-policy and candidate-policy ledgers. It measures decision changes and
 state divergence without creating provider orders or moving money.
 
+Runtime audit events form a SHA-256 hash chain with a persisted head
+checkpoint. Verification detects content changes, missing or reordered links,
+sequence gaps, and tail deletion. The checkpoint is not externally notarized.
+
 ## Non-goals
 
 - production money movement;

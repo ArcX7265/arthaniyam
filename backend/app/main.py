@@ -5,6 +5,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.audit import AuditIntegrityReport, AuditIntegrityService
 from app.campaigns import (
     BoundaryCampaignReport,
     BoundaryCampaignRequest,
@@ -89,6 +90,7 @@ refund_service = RefundService(runtime_guard)
 evaluation_service = AdversarialEvaluationService(runtime_guard.repository)
 boundary_campaign_service = BoundaryCampaignService(runtime_guard.repository)
 policy_impact_service = PolicyImpactService(runtime_guard.repository)
+audit_integrity_service = AuditIntegrityService(runtime_guard.repository)
 
 
 @app.get("/", include_in_schema=False)
@@ -355,6 +357,17 @@ def get_runtime_state(
         return runtime_guard.state(policy_id, version)
     except RuntimeActionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/runtime/policies/{policy_id}/audit-integrity",
+    response_model=AuditIntegrityReport,
+)
+def verify_audit_integrity(
+    policy_id: str,
+    version: int = Query(default=1, ge=1),
+) -> AuditIntegrityReport:
+    return audit_integrity_service.verify(policy_id, version)
 
 
 @app.post("/api/v1/executions/orders", response_model=OrderExecutionResult)
