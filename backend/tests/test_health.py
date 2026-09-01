@@ -49,6 +49,7 @@ def test_dashboard_assets_are_available() -> None:
     assert "runDelegationAttack" in script.text
     assert "runRefundAttack" in script.text
     assert "runAdversarialEvaluation" in script.text
+    assert "runJudgeScorecard" in script.text
     assert "runBoundaryCampaign" in script.text
     assert "runPolicyRollout" in script.text
     assert "runAuditIntegrity" in script.text

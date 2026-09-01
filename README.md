@@ -103,6 +103,21 @@ authorization and a production-grade provider workflow are added.
 
 ## Adversarial evaluation suite
 
+### One-click judge scorecard
+
+The dashboard's **Buildathon judge mode** runs the symbolic split-payment
+counterexample, the eleven-scenario mixed benchmark, and a seeded boundary
+campaign as one evidence path. It reports the worst observed attack recall and
+false-positive rate, verifies the concurrent budget invariant, persists the
+complete result, and displays the prototype's trust boundaries beside the
+metrics.
+
+`POST /api/v1/evaluations/judge-scorecards/run` generates the scorecard and
+`GET /api/v1/evaluations/judge-scorecards/{scorecard_id}` retrieves it. The
+top-level SHA-256 hash commits to all three constituent evidence hashes and the
+six readiness checks, while excluding timestamps and random report IDs so an
+identical seeded run is reproducible.
+
 The dashboard can run a fixed mixed benchmark with seven attacks and four benign
 controls. The attacks cover split payments, budget exhaustion, a concurrent
 budget burst, duplicate invoices, approval spoofing, delegated authority

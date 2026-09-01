@@ -17,6 +17,11 @@ from app.campaigns import (
     BoundaryCampaignService,
 )
 from app.evaluations import AdversarialEvaluationReport, AdversarialEvaluationService
+from app.judge import (
+    JudgeScorecardReport,
+    JudgeScorecardRequest,
+    JudgeScorecardService,
+)
 from app.approvals.models import (
     ApprovalChallenge,
     ApprovalChallengeRequest,
@@ -96,6 +101,7 @@ evaluation_service = AdversarialEvaluationService(runtime_guard.repository)
 boundary_campaign_service = BoundaryCampaignService(runtime_guard.repository)
 policy_impact_service = PolicyImpactService(runtime_guard.repository)
 audit_integrity_service = AuditIntegrityService(runtime_guard.repository)
+judge_scorecard_service = JudgeScorecardService(runtime_guard.repository)
 
 
 @app.get("/", include_in_schema=False)
@@ -119,9 +125,31 @@ def system_capabilities() -> dict[str, str | bool | int]:
         "demo_delegations_enabled": settings.razorpay_mode == "simulate",
         "demo_refunds_enabled": settings.razorpay_mode == "simulate",
         "adversarial_scenarios": 11,
+        "judge_scorecard_enabled": True,
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }
+
+
+@app.post(
+    "/api/v1/evaluations/judge-scorecards/run",
+    response_model=JudgeScorecardReport,
+)
+def run_judge_scorecard(request: JudgeScorecardRequest) -> JudgeScorecardReport:
+    """Run the complete, isolated buildathon evidence path in one request."""
+
+    return judge_scorecard_service.run(request)
+
+
+@app.get(
+    "/api/v1/evaluations/judge-scorecards/{scorecard_id}",
+    response_model=JudgeScorecardReport,
+)
+def get_judge_scorecard(scorecard_id: str) -> JudgeScorecardReport:
+    try:
+        return judge_scorecard_service.get(scorecard_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="judge scorecard was not found") from exc
 
 
 @app.post(
