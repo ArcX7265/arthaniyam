@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from threading import RLock
 from uuid import uuid4
 
+from app.approvals.binding import approval_binding
 from app.policy.models import PolicyDefinition
 from app.runtime.models import (
     ActionTransitionResult, AuditEvent, DecisionDetail, FinancialAction,
@@ -55,7 +56,14 @@ class RuntimeGuard:
                         "state": self._snapshot(policy),
                         "audit_event": event,
                     })
-                return self._conflict_response(policy, action)
+                original = FinancialAction.model_validate_json(prior.fingerprint)
+                approval_resume = (
+                    prior.response.arthaniyam.decision == "require_approval"
+                    and self._same_action_scope(original, action)
+                    and set(original.approval_ids).issubset(action.approval_ids)
+                )
+                if not approval_resume:
+                    return self._conflict_response(policy, action)
 
             naive = self._naive_decision(policy, action)
             arthaniyam, correlated_amount = self._arthaniyam_decision(policy, action)
@@ -64,6 +72,11 @@ class RuntimeGuard:
                     policy.policy_id, policy.version, action, "reserved",
                     datetime.now(timezone.utc),
                 )
+                if (
+                    action.approval_ids
+                    and "REQUIRED_APPROVAL_PRESENT" in arthaniyam.reason_codes
+                ):
+                    self.repository.consume_approval_grants(action.approval_ids)
             event = self._event(
                 action.action_id, "evaluation", arthaniyam.decision,
                 arthaniyam.reason_codes,
@@ -189,11 +202,20 @@ class RuntimeGuard:
         correlated = [entry for entry in active if entry.created_at >= cutoff and self._correlation_key(policy, entry.action) == self._correlation_key(policy, action)]
         correlated_amount = action.amount + sum(entry.action.amount for entry in correlated)
         needs_approval = correlated_amount > policy.approval.required_above
-        has_approval = len(action.approval_ids) >= policy.approval.approver_count
+        binding = approval_binding(policy.policy_id, policy.version, action)
+        valid_approvals = self.repository.valid_approval_count(
+            action.approval_ids, binding, datetime.now(timezone.utc)
+        )
+        has_approval = valid_approvals >= policy.approval.approver_count
         if needs_approval and not has_approval:
+            reason = (
+                "APPROVAL_INVALID_OR_EXPIRED"
+                if action.approval_ids
+                else "CORRELATED_APPROVAL_THRESHOLD_EXCEEDED"
+            )
             return DecisionDetail(
                 decision="require_approval",
-                reason_codes=["CORRELATED_APPROVAL_THRESHOLD_EXCEEDED"],
+                reason_codes=[reason],
                 explanation=(
                     f"Related active payments total INR {correlated_amount / 100:,.2f}, "
                     f"above the INR {policy.approval.required_above / 100:,.2f} approval threshold."
@@ -249,6 +271,12 @@ class RuntimeGuard:
     def _correlation_key(policy: PolicyDefinition, action: FinancialAction) -> tuple[str, ...]:
         values = {"vendor": action.vendor_id, "purpose": action.purpose, "invoice": action.invoice_id}
         return tuple(values[key] for key in policy.correlation.group_by)
+
+    @staticmethod
+    def _same_action_scope(first: FinancialAction, second: FinancialAction) -> bool:
+        return first.model_dump(exclude={"approval_ids"}) == second.model_dump(
+            exclude={"approval_ids"}
+        )
 
     @staticmethod
     def _deny(code: str, explanation: str) -> DecisionDetail:

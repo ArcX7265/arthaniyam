@@ -1,9 +1,16 @@
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.approvals.models import (
+    ApprovalChallenge,
+    ApprovalChallengeRequest,
+    ApprovalDecisionRequest,
+)
+from app.approvals.service import ApprovalService
 from app.payments.gateway import PaymentGatewayError, create_payment_gateway
 from app.payments.models import (
     OrderExecutionRequest,
@@ -15,6 +22,11 @@ from app.payments.models import (
 from app.payments.service import PaymentExecutionService
 from app.payments.webhooks import RazorpayWebhookService, WebhookVerificationError
 from app.policy.models import PolicyDefinition
+from app.policy.compiler import (
+    PolicyCompilationRequest,
+    PolicyCompilationResult,
+    create_policy_compiler,
+)
 from app.policy.proofs import ProofRecord, ProofReplayResult, ProofService
 from app.policy.verifier import (
     VerificationRequest,
@@ -57,6 +69,10 @@ webhook_service = (
     else None
 )
 proof_service = ProofService(runtime_guard.repository)
+policy_compiler = create_policy_compiler(
+    settings.policy_compiler_mode, settings.openai_api_key, settings.openai_model
+)
+approval_service = ApprovalService(runtime_guard)
 
 
 @app.get("/", include_in_schema=False)
@@ -75,6 +91,8 @@ def system_capabilities() -> dict[str, str | bool]:
         "persistence": "sqlite",
         "payment_mode": settings.razorpay_mode,
         "webhook_configured": webhook_service is not None,
+        "policy_compiler_mode": settings.policy_compiler_mode,
+        "demo_approvals_enabled": settings.razorpay_mode == "simulate",
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }
@@ -85,6 +103,16 @@ def validate_policy(policy: PolicyDefinition) -> PolicyDefinition:
     """Validate a typed policy without representing schema parsing as proof."""
 
     return policy
+
+
+@app.post("/api/v1/policies/compile", response_model=PolicyCompilationResult)
+def compile_policy(request: PolicyCompilationRequest) -> PolicyCompilationResult:
+    """Compile untrusted policy prose into a reviewable typed candidate."""
+
+    try:
+        return policy_compiler.compile(request)
+    except (ValueError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail=f"policy compiler failed: {exc}") from exc
 
 
 @app.post("/api/v1/policies/verify", response_model=VerificationResult)
@@ -121,6 +149,47 @@ def evaluate_runtime_action(request: RuntimeEvaluationRequest) -> RuntimeCompari
 
     try:
         return runtime_guard.evaluate(request)
+    except RuntimeTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def require_simulator_approval_demo() -> None:
+    if settings.razorpay_mode != "simulate":
+        raise HTTPException(
+            status_code=403,
+            detail="demo approvals are disabled outside the offline payment simulator",
+        )
+
+
+@app.post("/api/v1/demo/approvals/challenges", response_model=ApprovalChallenge)
+def create_demo_approval_challenge(
+    request: ApprovalChallengeRequest,
+) -> ApprovalChallenge:
+    """Create an action-bound approval only for the offline simulator."""
+
+    require_simulator_approval_demo()
+    try:
+        return approval_service.create_challenge(request)
+    except RuntimeActionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/demo/approvals/challenges/{challenge_id}/decide",
+    response_model=ApprovalChallenge,
+)
+def decide_demo_approval_challenge(
+    challenge_id: str, request: ApprovalDecisionRequest
+) -> ApprovalChallenge:
+    """Simulate a human decision; never available with Razorpay Test Mode."""
+
+    require_simulator_approval_demo()
+    try:
+        return approval_service.decide(challenge_id, request)
+    except RuntimeActionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

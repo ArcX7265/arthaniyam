@@ -36,6 +36,34 @@ result, while `POST /api/v1/proofs/{proof_run_id}/replay` reruns the solver and
 checks both stored-record integrity and deterministic replay. Policy Studio
 exposes this through a one-click **Replay proof** control.
 
+## Policy compiler
+
+Policy Studio accepts constrained finance rules in plain language through
+`POST /api/v1/policies/compile`. Compilation is deliberately separated from
+enforcement: the compiler creates a typed candidate, source mappings,
+assumptions, warnings, and blocking ambiguities. Only a schema-valid candidate
+can be sent to the deterministic verifier or runtime guard.
+
+The safe default `POLICY_COMPILER_MODE=reference` is a transparent offline
+compiler for the demo grammar. Set `POLICY_COMPILER_MODE=openai`,
+`OPENAI_API_KEY`, and `OPENAI_MODEL` to use strict structured extraction through
+the OpenAI Responses API. Model output is still validated by the same typed
+policy boundary and never directly authorizes a payment.
+
+## Bounded approval demo
+
+When correlated spend requires review, the offline simulator creates an
+expiring challenge bound to the exact policy version, action, amount, vendor,
+purpose, category, and invoice. A grant is accepted only for that binding,
+requires distinct approvers according to policy, and is consumed after the
+reservation succeeds. Arbitrary approval strings, expired grants, cross-action
+reuse, and duplicate approver votes do not bypass the guard.
+
+The interactive endpoints live under `/api/v1/demo/approvals/*` and are
+hard-disabled whenever `RAZORPAY_MODE=test`. They intentionally simulate the
+human step for the buildathon walkthrough; a real deployment must replace them
+with authenticated approver identity and authorization.
+
 ```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload

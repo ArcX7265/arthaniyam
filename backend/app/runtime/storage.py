@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import os
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -135,6 +136,26 @@ class SQLiteRuntimeRepository:
                     evidence_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS approval_challenges (
+                    challenge_id TEXT PRIMARY KEY,
+                    policy_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    action_id TEXT NOT NULL,
+                    challenge_json TEXT NOT NULL,
+                    UNIQUE(policy_id, version, action_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS approval_grants (
+                    approval_id TEXT PRIMARY KEY,
+                    challenge_id TEXT NOT NULL,
+                    binding_hash TEXT NOT NULL,
+                    approver_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    UNIQUE(challenge_id, approver_id),
+                    FOREIGN KEY (challenge_id) REFERENCES approval_challenges(challenge_id)
+                );
                 """
             )
             columns = {
@@ -150,6 +171,8 @@ class SQLiteRuntimeRepository:
 
     def reset(self) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM approval_grants")
+            connection.execute("DELETE FROM approval_challenges")
             connection.execute("DELETE FROM proof_runs")
             connection.execute("DELETE FROM webhook_events")
             connection.execute("DELETE FROM payment_confirmations")
@@ -158,6 +181,117 @@ class SQLiteRuntimeRepository:
             connection.execute("DELETE FROM evaluations")
             connection.execute("DELETE FROM ledger_entries")
             connection.execute("DELETE FROM policies")
+
+    def save_approval_challenge(self, challenge_json: str) -> None:
+        challenge = json.loads(challenge_json)
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO approval_challenges(
+                    challenge_id, policy_id, version, action_id, challenge_json
+                ) VALUES (?, ?, ?, ?, ?)""",
+                (
+                    challenge["challenge_id"],
+                    challenge["policy_id"],
+                    challenge["policy_version"],
+                    challenge["action_id"],
+                    challenge_json,
+                ),
+            )
+
+    def update_approval_challenge(self, challenge_json: str) -> None:
+        challenge = json.loads(challenge_json)
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE approval_challenges SET challenge_json = ? WHERE challenge_id = ?",
+                (challenge_json, challenge["challenge_id"]),
+            )
+
+    def get_approval_challenge(self, challenge_id: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT challenge_json FROM approval_challenges WHERE challenge_id = ?",
+                (challenge_id,),
+            ).fetchone()
+        return row["challenge_json"] if row else None
+
+    def find_approval_challenge(
+        self, policy_id: str, version: int, action_id: str
+    ) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT challenge_json FROM approval_challenges
+                WHERE policy_id = ? AND version = ? AND action_id = ?""",
+                (policy_id, version, action_id),
+            ).fetchone()
+        return row["challenge_json"] if row else None
+
+    def save_approval_grant(
+        self,
+        approval_id: str,
+        challenge_id: str,
+        binding_hash: str,
+        approver_id: str,
+        expires_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO approval_grants(
+                    approval_id, challenge_id, binding_hash, approver_id, status, expires_at
+                ) VALUES (?, ?, ?, ?, 'active', ?)""",
+                (
+                    approval_id,
+                    challenge_id,
+                    binding_hash,
+                    approver_id,
+                    expires_at.isoformat(),
+                ),
+            )
+
+    def valid_approval_count(
+        self, approval_ids: list[str], binding_hash: str, now: datetime
+    ) -> int:
+        if not approval_ids:
+            return 0
+        placeholders = ",".join("?" for _ in approval_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""SELECT DISTINCT approver_id FROM approval_grants
+                WHERE approval_id IN ({placeholders}) AND binding_hash = ?
+                AND status = 'active' AND expires_at > ?""",
+                (*approval_ids, binding_hash, now.isoformat()),
+            ).fetchall()
+        return len(rows)
+
+    def consume_approval_grants(self, approval_ids: list[str]) -> None:
+        if not approval_ids:
+            return
+        placeholders = ",".join("?" for _ in approval_ids)
+        with self._connect() as connection:
+            challenges = connection.execute(
+                f"""SELECT DISTINCT challenge_id FROM approval_grants
+                WHERE approval_id IN ({placeholders})""",
+                approval_ids,
+            ).fetchall()
+            connection.execute(
+                f"UPDATE approval_grants SET status = 'consumed' WHERE approval_id IN ({placeholders})",
+                approval_ids,
+            )
+            for row in challenges:
+                stored = connection.execute(
+                    "SELECT challenge_json FROM approval_challenges WHERE challenge_id = ?",
+                    (row["challenge_id"],),
+                ).fetchone()
+                if stored:
+                    challenge = json.loads(stored["challenge_json"])
+                    challenge["status"] = "consumed"
+                    connection.execute(
+                        """UPDATE approval_challenges SET challenge_json = ?
+                        WHERE challenge_id = ?""",
+                        (
+                            json.dumps(challenge, separators=(",", ":")),
+                            row["challenge_id"],
+                        ),
+                    )
 
     def save_proof(
         self,

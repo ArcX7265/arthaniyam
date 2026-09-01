@@ -162,14 +162,41 @@ def test_active_reservations_are_counted_against_budget() -> None:
 
 def test_required_approval_allows_related_payment_and_reserves_it() -> None:
     evaluate(policy(), action("payment-001"))
+    evaluate(policy(), action("payment-002"))
+    challenge = client.post(
+        "/api/v1/demo/approvals/challenges",
+        json={
+            "policy_id": "runtime-demo",
+            "policy_version": 1,
+            "action_id": "payment-002",
+        },
+    ).json()
+    decision = client.post(
+        f"/api/v1/demo/approvals/challenges/{challenge['challenge_id']}/decide",
+        json={"approver_id": "finance-controller", "decision": "approve"},
+    ).json()
     approved = evaluate(
         policy(),
-        action("payment-002", approval_ids=["approval-finance-001"]),
+        action(
+            "payment-002",
+            approval_ids=[decision["grants"][0]["approval_id"]],
+        ),
     ).json()
 
     assert approved["arthaniyam"]["decision"] == "allow_and_reserve"
     assert "REQUIRED_APPROVAL_PRESENT" in approved["arthaniyam"]["reason_codes"]
     assert approved["state"]["reserved_amount"] == 1_800_000
+
+
+def test_arbitrary_approval_string_cannot_bypass_review() -> None:
+    evaluate(policy(), action("payment-001"))
+    result = evaluate(
+        policy(),
+        action("payment-002", approval_ids=["approval-made-up"]),
+    ).json()
+
+    assert result["arthaniyam"]["decision"] == "require_approval"
+    assert "APPROVAL_INVALID_OR_EXPIRED" in result["arthaniyam"]["reason_codes"]
 
 
 def test_releasing_reservation_returns_budget() -> None:

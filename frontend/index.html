@@ -48,6 +48,9 @@
         <div class="studio-grid">
           <form class="panel policy-panel" id="policy-form">
             <div class="panel-heading"><div><span class="panel-kicker">Procurement policy</span><h3>Autonomous purchasing</h3></div><span class="version-chip">v1</span></div>
+            <label class="compiler-source"><span>Describe the policy in plain language</span><textarea id="policy-source" rows="6">The monthly budget is ₹50,000. The per-transaction limit is ₹10,000. Require approval above ₹10,000. Correlate related vendor and purpose payments for 24 hours. Approved vendors are Vector Systems. Allowed categories are hardware.</textarea></label>
+            <button class="button button-primary button-full" type="button" id="compile-button"><span>Compile policy language</span><span aria-hidden="true">→</span></button>
+            <div class="compiler-report" id="compiler-report" aria-live="polite"><small>Compiler</small><span>Waiting for policy language</span></div>
             <label><span>Monthly budget</span><span class="input-wrap"><b>₹</b><input id="monthly-limit" type="number" min="1" value="50000" /></span></label>
             <label><span>Per-transaction limit</span><span class="input-wrap"><b>₹</b><input id="transaction-limit" type="number" min="1" value="10000" /></span></label>
             <label><span>Approval required above</span><span class="input-wrap"><b>₹</b><input id="approval-threshold" type="number" min="0" value="10000" /></span></label>
@@ -71,6 +74,7 @@
         </div>
         <div class="comparison-board" id="comparison-board"><div class="comparison-head"><span>Request</span><span>Naive gateway</span><span>ArthaNiyam</span><span>Shared state</span></div><div class="comparison-placeholder">Run the payment sequence to compare both authorization models.</div></div>
         <div class="execution-receipt" id="execution-receipt"><span class="receipt-icon">◇</span><div><small>Execution gateway</small><strong>Waiting for a policy-approved reservation</strong></div><code>no order</code></div>
+        <div class="approval-console" id="approval-console"><span class="receipt-icon">⌁</span><div><small>Bounded approval</small><strong>No approval challenge is active</strong></div><code>waiting</code></div>
       </section>
 
       <section class="runtime-section section-shell" id="audit-trail">
