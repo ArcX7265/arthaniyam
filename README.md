@@ -118,6 +118,14 @@ top-level SHA-256 hash commits to all three constituent evidence hashes and the
 six readiness checks, while excluding timestamps and random report IDs so an
 identical seeded run is reproducible.
 
+The scorecard can be downloaded as an `arthaniyam.judge.v1` portable bundle.
+Its manifest and internal scorecard hash can be verified without the API or any
+third-party packages:
+
+```powershell
+python scripts/verify_scorecard.py path\to\arthaniyam-judge-scorecard.json
+```
+
 The dashboard can run a fixed mixed benchmark with seven attacks and four benign
 controls. The attacks cover split payments, budget exhaustion, a concurrent
 budget burst, duplicate invoices, approval spoofing, delegated authority

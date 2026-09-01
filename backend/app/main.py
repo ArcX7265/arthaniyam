@@ -18,6 +18,8 @@ from app.campaigns import (
 )
 from app.evaluations import AdversarialEvaluationReport, AdversarialEvaluationService
 from app.judge import (
+    JudgeEvidenceBundle,
+    JudgeEvidenceVerification,
     JudgeScorecardReport,
     JudgeScorecardRequest,
     JudgeScorecardService,
@@ -139,6 +141,27 @@ def run_judge_scorecard(request: JudgeScorecardRequest) -> JudgeScorecardReport:
     """Run the complete, isolated buildathon evidence path in one request."""
 
     return judge_scorecard_service.run(request)
+
+
+@app.get(
+    "/api/v1/evaluations/judge-scorecards/{scorecard_id}/evidence-bundle",
+    response_model=JudgeEvidenceBundle,
+)
+def export_judge_scorecard(scorecard_id: str) -> JudgeEvidenceBundle:
+    try:
+        return judge_scorecard_service.export_bundle(scorecard_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="judge scorecard was not found") from exc
+
+
+@app.post(
+    "/api/v1/evaluations/judge-scorecards/verify",
+    response_model=JudgeEvidenceVerification,
+)
+def verify_judge_scorecard(
+    bundle: JudgeEvidenceBundle,
+) -> JudgeEvidenceVerification:
+    return judge_scorecard_service.verify_bundle(bundle)
 
 
 @app.get(

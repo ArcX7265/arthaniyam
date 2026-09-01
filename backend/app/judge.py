@@ -29,6 +29,8 @@ class JudgeScorecardReport(StrictModel):
     scorecard_id: str
     created_at: datetime
     verdict: Literal["ready", "needs_attention"]
+    campaign_seed: int
+    samples_per_class: int
     checks_passed: int
     total_checks: int
     fixed_scenarios: int
@@ -43,6 +45,23 @@ class JudgeScorecardReport(StrictModel):
     evidence_hash: str
     checks: list[JudgeCheck]
     limitations: list[str]
+
+
+class JudgeEvidenceBundle(StrictModel):
+    format_version: Literal["arthaniyam.judge.v1"] = "arthaniyam.judge.v1"
+    exported_at: datetime
+    scorecard: JudgeScorecardReport
+    bundle_hash: str
+
+
+class JudgeEvidenceVerification(StrictModel):
+    valid: bool
+    format_version: str
+    scorecard_id: str
+    bundle_hash: str
+    calculated_bundle_hash: str
+    calculated_evidence_hash: str
+    issues: list[str]
 
 
 class JudgeScorecardService:
@@ -151,6 +170,8 @@ class JudgeScorecardService:
             scorecard_id=str(uuid4()),
             created_at=datetime.now(timezone.utc),
             verdict="ready" if passed == len(checks) else "needs_attention",
+            campaign_seed=request.seed,
+            samples_per_class=request.samples_per_class,
             checks_passed=passed,
             total_checks=len(checks),
             fixed_scenarios=benchmark.total_scenarios,
@@ -189,6 +210,74 @@ class JudgeScorecardService:
         if stored is None:
             raise KeyError(scorecard_id)
         return JudgeScorecardReport.model_validate_json(stored)
+
+    def export_bundle(self, scorecard_id: str) -> JudgeEvidenceBundle:
+        scorecard = self.get(scorecard_id)
+        core = {
+            "format_version": "arthaniyam.judge.v1",
+            "scorecard": scorecard.model_dump(mode="json"),
+        }
+        return JudgeEvidenceBundle(
+            exported_at=datetime.now(timezone.utc),
+            scorecard=scorecard,
+            bundle_hash=self._hash(core),
+        )
+
+    def verify_bundle(
+        self, bundle: JudgeEvidenceBundle
+    ) -> JudgeEvidenceVerification:
+        scorecard = bundle.scorecard
+        calculated_evidence_hash = self._scorecard_evidence_hash(scorecard)
+        calculated_bundle_hash = self._hash(
+            {
+                "format_version": bundle.format_version,
+                "scorecard": scorecard.model_dump(mode="json"),
+            }
+        )
+        issues: list[str] = []
+        if scorecard.evidence_hash != calculated_evidence_hash:
+            issues.append("scorecard evidence hash does not match its evaluation inputs")
+        if bundle.bundle_hash != calculated_bundle_hash:
+            issues.append("bundle manifest hash does not match")
+        actual_passed = sum(check.passed for check in scorecard.checks)
+        if scorecard.checks_passed != actual_passed:
+            issues.append("declared passed-check count differs from the checks")
+        if scorecard.total_checks != len(scorecard.checks):
+            issues.append("declared total-check count differs from the checks")
+        expected_verdict = (
+            "ready" if actual_passed == len(scorecard.checks) else "needs_attention"
+        )
+        if scorecard.verdict != expected_verdict:
+            issues.append("verdict is inconsistent with the check results")
+        if scorecard.total_test_cases != (
+            scorecard.fixed_scenarios + scorecard.generated_cases
+        ):
+            issues.append("declared test-case total differs from its components")
+        return JudgeEvidenceVerification(
+            valid=not issues,
+            format_version=bundle.format_version,
+            scorecard_id=scorecard.scorecard_id,
+            bundle_hash=bundle.bundle_hash,
+            calculated_bundle_hash=calculated_bundle_hash,
+            calculated_evidence_hash=calculated_evidence_hash,
+            issues=issues,
+        )
+
+    def _scorecard_evidence_hash(self, scorecard: JudgeScorecardReport) -> str:
+        return self._hash(
+            {
+                "request": {
+                    "seed": scorecard.campaign_seed,
+                    "samples_per_class": scorecard.samples_per_class,
+                },
+                "proof_evidence_hash": scorecard.proof_evidence_hash,
+                "benchmark_evidence_hash": scorecard.benchmark_evidence_hash,
+                "campaign_evidence_hash": scorecard.campaign_evidence_hash,
+                "checks": [
+                    check.model_dump(mode="json") for check in scorecard.checks
+                ],
+            }
+        )
 
     @staticmethod
     def _hash(value: dict[str, object]) -> str:

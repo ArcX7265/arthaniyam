@@ -12,6 +12,8 @@
    false-positive rate, and the canonical evidence hash.
 5. Point to **Honest boundary**. ArthaNiyam deliberately distinguishes measured
    prototype evidence from claims it has not established.
+6. Download the verifiable JSON and run `python scripts/verify_scorecard.py
+   <downloaded-file>` to validate it independently from the server.
 
 ## The core sentence
 
