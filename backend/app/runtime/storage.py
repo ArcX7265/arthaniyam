@@ -214,6 +214,13 @@ class SQLiteRuntimeRepository:
                     evidence_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS boundary_campaigns (
+                    campaign_id TEXT PRIMARY KEY,
+                    report_json TEXT NOT NULL,
+                    evidence_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             columns = {
@@ -229,6 +236,7 @@ class SQLiteRuntimeRepository:
 
     def reset(self) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM boundary_campaigns")
             connection.execute("DELETE FROM adversarial_evaluations")
             connection.execute("DELETE FROM refunds")
             connection.execute("DELETE FROM authority_grants")
@@ -263,6 +271,29 @@ class SQLiteRuntimeRepository:
             row = connection.execute(
                 "SELECT report_json FROM adversarial_evaluations WHERE run_id = ?",
                 (run_id,),
+            ).fetchone()
+        return row["report_json"] if row else None
+
+    def save_boundary_campaign(
+        self,
+        campaign_id: str,
+        report_json: str,
+        evidence_hash: str,
+        created_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO boundary_campaigns(
+                    campaign_id, report_json, evidence_hash, created_at
+                ) VALUES (?, ?, ?, ?)""",
+                (campaign_id, report_json, evidence_hash, created_at.isoformat()),
+            )
+
+    def get_boundary_campaign(self, campaign_id: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT report_json FROM boundary_campaigns WHERE campaign_id = ?",
+                (campaign_id,),
             ).fetchone()
         return row["report_json"] if row else None
 

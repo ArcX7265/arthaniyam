@@ -104,6 +104,19 @@ retrieves the exact report. The dashboard reports attack recall, false-positive
 rate on the benign controls, and total fixed-suite accuracy separately. These
 are benchmark measurements, not claims about production fraud distributions.
 
+## Seeded boundary campaign
+
+The boundary campaign goes beyond the ten hand-authored scenarios by generating
+balanced attack and benign cases immediately above and below the correlated
+approval and monthly-budget limits. A small independent arithmetic oracle sets
+the expected outcome before the runtime guard is evaluated.
+
+`POST /api/v1/evaluations/boundary-campaigns/run` accepts a reproducible seed
+and 5–50 samples per class, producing 20–200 isolated cases. The persisted
+report includes false negatives, false positives, attack recall, accuracy,
+throughput, every generated case, and a canonical evidence hash. Repeating the
+same seed and size produces the same evidence hash.
+
 ```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload

@@ -107,6 +107,13 @@
           <button class="run-button evaluation-run" id="run-evaluation-button" type="button"><span class="run-icon">&#9654;</span><span><strong>Run mixed benchmark</strong><small>Uses an isolated offline simulator</small></span></button>
         </div>
         <div class="evaluation-result" id="evaluation-result" aria-live="polite"><span>Run the benchmark to generate a persisted evidence report.</span></div>
+        <div class="campaign-command panel">
+          <div><span class="panel-kicker">Seeded boundary fuzzing</span><h3>Generate cases at the edge of policy.</h3><p>An independent arithmetic oracle labels values immediately above and below approval and budget boundaries.</p></div>
+          <label><span>Seed</span><input id="campaign-seed" type="number" min="0" max="4294967295" value="2026" /></label>
+          <label><span>Samples / class</span><input id="campaign-samples" type="number" min="5" max="50" value="20" /></label>
+          <button class="run-button campaign-run" id="run-boundary-button" type="button"><span class="run-icon">&#9654;</span><span><strong>Run boundary campaign</strong><small>Generates 4 × samples cases</small></span></button>
+        </div>
+        <div class="campaign-result" id="campaign-result" aria-live="polite"><span>Choose a seed and run a reproducible boundary campaign.</span></div>
       </section>
 
       <section class="runtime-section section-shell" id="audit-trail">

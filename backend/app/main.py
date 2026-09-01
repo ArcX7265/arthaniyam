@@ -5,6 +5,11 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.campaigns import (
+    BoundaryCampaignReport,
+    BoundaryCampaignRequest,
+    BoundaryCampaignService,
+)
 from app.evaluations import AdversarialEvaluationReport, AdversarialEvaluationService
 from app.approvals.models import (
     ApprovalChallenge,
@@ -81,6 +86,7 @@ policy_compiler = create_policy_compiler(
 approval_service = ApprovalService(runtime_guard)
 refund_service = RefundService(runtime_guard)
 evaluation_service = AdversarialEvaluationService(runtime_guard.repository)
+boundary_campaign_service = BoundaryCampaignService(runtime_guard.repository)
 
 
 @app.get("/", include_in_schema=False)
@@ -128,6 +134,29 @@ def get_adversarial_evaluation(run_id: str) -> AdversarialEvaluationReport:
         return evaluation_service.get(run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="evaluation run was not found") from exc
+
+
+@app.post(
+    "/api/v1/evaluations/boundary-campaigns/run",
+    response_model=BoundaryCampaignReport,
+)
+def run_boundary_campaign(
+    request: BoundaryCampaignRequest,
+) -> BoundaryCampaignReport:
+    """Generate and score deterministic cases around policy boundaries."""
+
+    return boundary_campaign_service.run(request)
+
+
+@app.get(
+    "/api/v1/evaluations/boundary-campaigns/{campaign_id}",
+    response_model=BoundaryCampaignReport,
+)
+def get_boundary_campaign(campaign_id: str) -> BoundaryCampaignReport:
+    try:
+        return boundary_campaign_service.get(campaign_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="boundary campaign was not found") from exc
 
 
 @app.post("/api/v1/policies/validate", response_model=PolicyDefinition)

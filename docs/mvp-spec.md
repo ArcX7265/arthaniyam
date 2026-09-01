@@ -34,6 +34,11 @@ The mixed evaluation benchmark reports attack recall across six known attacks
 and false-positive rate across four known benign controls. These fixed-suite
 metrics must not be described as production fraud accuracy.
 
+A seeded boundary campaign may generate 20–200 balanced cases immediately
+above and below the approval and monthly-budget limits. Its expected outcomes
+come from an independent arithmetic oracle, and its hash excludes runtime-only
+metadata so an identical seed can be replayed deterministically.
+
 ## Non-goals
 
 - production money movement;
