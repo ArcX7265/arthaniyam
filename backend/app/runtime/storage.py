@@ -221,6 +221,13 @@ class SQLiteRuntimeRepository:
                     evidence_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS policy_impact_reports (
+                    simulation_id TEXT PRIMARY KEY,
+                    report_json TEXT NOT NULL,
+                    evidence_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             columns = {
@@ -236,6 +243,7 @@ class SQLiteRuntimeRepository:
 
     def reset(self) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM policy_impact_reports")
             connection.execute("DELETE FROM boundary_campaigns")
             connection.execute("DELETE FROM adversarial_evaluations")
             connection.execute("DELETE FROM refunds")
@@ -294,6 +302,29 @@ class SQLiteRuntimeRepository:
             row = connection.execute(
                 "SELECT report_json FROM boundary_campaigns WHERE campaign_id = ?",
                 (campaign_id,),
+            ).fetchone()
+        return row["report_json"] if row else None
+
+    def save_policy_impact(
+        self,
+        simulation_id: str,
+        report_json: str,
+        evidence_hash: str,
+        created_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO policy_impact_reports(
+                    simulation_id, report_json, evidence_hash, created_at
+                ) VALUES (?, ?, ?, ?)""",
+                (simulation_id, report_json, evidence_hash, created_at.isoformat()),
+            )
+
+    def get_policy_impact(self, simulation_id: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT report_json FROM policy_impact_reports WHERE simulation_id = ?",
+                (simulation_id,),
             ).fetchone()
         return row["report_json"] if row else None
 

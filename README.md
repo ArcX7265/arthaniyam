@@ -50,6 +50,18 @@ compiler for the demo grammar. Set `POLICY_COMPILER_MODE=openai`,
 the OpenAI Responses API. Model output is still validated by the same typed
 policy boundary and never directly authorizes a payment.
 
+## Counterfactual policy rollout
+
+Shadow mode replays one historical action stream against the current and a
+candidate policy in two isolated ledgers. It reports unchanged, escalated, and
+relaxed decisions; new reviews and denials; and the final budget position in
+each counterfactual world before the candidate policy is deployed.
+
+`POST /api/v1/policies/impact/simulate` accepts 1–200 actions and persists a
+canonical evidence report retrievable from
+`GET /api/v1/policies/impact/{simulation_id}`. No action is sent to a payment
+provider during this simulation.
+
 ## Bounded approval demo
 
 When correlated spend requires review, the offline simulator creates an

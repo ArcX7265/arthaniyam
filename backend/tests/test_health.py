@@ -50,6 +50,7 @@ def test_dashboard_assets_are_available() -> None:
     assert "runRefundAttack" in script.text
     assert "runAdversarialEvaluation" in script.text
     assert "runBoundaryCampaign" in script.text
+    assert "runPolicyRollout" in script.text
 
 
 def test_policy_schema_rejects_transaction_limit_above_budget() -> None:

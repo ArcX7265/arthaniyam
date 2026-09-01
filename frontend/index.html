@@ -62,6 +62,12 @@
             <div class="empty-state"><div class="radar" aria-hidden="true"><span></span></div><span class="panel-kicker">Model checker ready</span><h3>Ask the solver to break your policy.</h3><p>ArthaNiyam will search for the smallest sequence of individually valid actions that creates an invalid combined outcome.</p></div>
           </section>
         </div>
+        <div class="rollout-panel panel">
+          <div><span class="panel-kicker">Counterfactual shadow mode</span><h3>Test a policy change before deployment.</h3><p>Replay the same historical purchases in two isolated worlds and expose operational regressions before the candidate policy becomes active.</p></div>
+          <label><span>Candidate approval threshold</span><span class="input-wrap"><b>â‚¹</b><input id="candidate-threshold" type="number" min="0" value="8000" /></span></label>
+          <button class="run-button rollout-run" id="run-rollout-button" type="button"><span class="run-icon">&#9654;</span><span><strong>Simulate rollout</strong><small>Current policy vs candidate v2</small></span></button>
+        </div>
+        <div class="rollout-result" id="rollout-result" aria-live="polite"><span>Simulate the candidate policy against a representative historical action stream.</span></div>
       </section>
 
       <section class="attack-section" id="attack-lab">

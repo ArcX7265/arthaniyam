@@ -39,6 +39,10 @@ above and below the approval and monthly-budget limits. Its expected outcomes
 come from an independent arithmetic oracle, and its hash excludes runtime-only
 metadata so an identical seed can be replayed deterministically.
 
+Counterfactual rollout simulation replays at most 200 actions in isolated
+current-policy and candidate-policy ledgers. It measures decision changes and
+state divergence without creating provider orders or moving money.
+
 ## Non-goals
 
 - production money movement;

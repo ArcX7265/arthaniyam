@@ -57,6 +57,7 @@ from app.runtime.models import (
     RuntimeStateResponse,
 )
 from app.settings import settings
+from app.shadow import PolicyImpactReport, PolicyImpactRequest, PolicyImpactService
 
 
 app = FastAPI(
@@ -87,6 +88,7 @@ approval_service = ApprovalService(runtime_guard)
 refund_service = RefundService(runtime_guard)
 evaluation_service = AdversarialEvaluationService(runtime_guard.repository)
 boundary_campaign_service = BoundaryCampaignService(runtime_guard.repository)
+policy_impact_service = PolicyImpactService(runtime_guard.repository)
 
 
 @app.get("/", include_in_schema=False)
@@ -157,6 +159,27 @@ def get_boundary_campaign(campaign_id: str) -> BoundaryCampaignReport:
         return boundary_campaign_service.get(campaign_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="boundary campaign was not found") from exc
+
+
+@app.post(
+    "/api/v1/policies/impact/simulate",
+    response_model=PolicyImpactReport,
+)
+def simulate_policy_impact(request: PolicyImpactRequest) -> PolicyImpactReport:
+    """Replay actions against current and candidate policies in isolated worlds."""
+
+    return policy_impact_service.simulate(request)
+
+
+@app.get(
+    "/api/v1/policies/impact/{simulation_id}",
+    response_model=PolicyImpactReport,
+)
+def get_policy_impact(simulation_id: str) -> PolicyImpactReport:
+    try:
+        return policy_impact_service.get(simulation_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="policy impact report was not found") from exc
 
 
 @app.post("/api/v1/policies/validate", response_model=PolicyDefinition)
