@@ -158,6 +158,18 @@ content, missing or reordered links, sequence gaps, and tail deletion against
 that checkpoint. This provides tamper evidence inside the prototype; external
 notarization of the checkpoint is outside the current boundary.
 
+After a runtime sequence, the dashboard can download a portable
+`arthaniyam.audit.v1` evidence bundle. Verify it without running the API:
+
+```powershell
+python scripts/verify_evidence.py path\to\arthaniyam-evidence.json
+```
+
+The bundle contains every event, chain link, checkpoint head, and a
+deterministic manifest hash. `POST /api/v1/evidence/verify` exposes the same
+portable verification contract for integrations. Export timestamps are not
+part of the manifest hash, so repeated exports of unchanged evidence match.
+
 Payment execution defaults to a deterministic offline Razorpay simulator. To
 connect a Razorpay Test Mode account, copy `.env.example` to `.env`, set
 `RAZORPAY_MODE=test`, and provide test-only credentials. The adapter rejects

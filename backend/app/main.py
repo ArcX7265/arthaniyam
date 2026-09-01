@@ -5,7 +5,12 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.audit import AuditIntegrityReport, AuditIntegrityService
+from app.audit import (
+    AuditEvidenceBundle,
+    AuditIntegrityReport,
+    AuditIntegrityService,
+    PortableEvidenceVerification,
+)
 from app.campaigns import (
     BoundaryCampaignReport,
     BoundaryCampaignRequest,
@@ -368,6 +373,30 @@ def verify_audit_integrity(
     version: int = Query(default=1, ge=1),
 ) -> AuditIntegrityReport:
     return audit_integrity_service.verify(policy_id, version)
+
+
+@app.get(
+    "/api/v1/runtime/policies/{policy_id}/evidence-bundle",
+    response_model=AuditEvidenceBundle,
+)
+def export_audit_evidence(
+    policy_id: str,
+    version: int = Query(default=1, ge=1),
+) -> AuditEvidenceBundle:
+    try:
+        return audit_integrity_service.export_bundle(policy_id, version)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/evidence/verify",
+    response_model=PortableEvidenceVerification,
+)
+def verify_portable_evidence(
+    bundle: AuditEvidenceBundle,
+) -> PortableEvidenceVerification:
+    return audit_integrity_service.verify_bundle(bundle)
 
 
 @app.post("/api/v1/executions/orders", response_model=OrderExecutionResult)

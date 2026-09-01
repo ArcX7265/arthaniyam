@@ -47,6 +47,10 @@ Runtime audit events form a SHA-256 hash chain with a persisted head
 checkpoint. Verification detects content changes, missing or reordered links,
 sequence gaps, and tail deletion. The checkpoint is not externally notarized.
 
+An `arthaniyam.audit.v1` bundle exports the complete chain and a deterministic
+manifest hash for verification outside the service. The standalone verifier
+uses only the Python standard library.
+
 ## Non-goals
 
 - production money movement;

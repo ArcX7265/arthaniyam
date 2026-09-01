@@ -1,5 +1,7 @@
 import json
 import sqlite3
+from pathlib import Path
+import runpy
 
 from fastapi.testclient import TestClient
 
@@ -102,3 +104,48 @@ def test_audit_chain_detects_deleted_tail_against_checkpoint() -> None:
 
     assert report["valid"] is False
     assert any("checkpoint count" in issue for issue in report["issues"])
+
+
+def test_portable_bundle_verifies_in_api_and_standalone_verifier() -> None:
+    client.post("/api/v1/runtime/evaluate", json=evaluation_body())
+    response = client.get(
+        "/api/v1/runtime/policies/audit-integrity-policy/evidence-bundle?version=1"
+    )
+
+    assert response.status_code == 200
+    bundle = response.json()
+    assert bundle["format_version"] == "arthaniyam.audit.v1"
+    assert bundle["event_count"] == 1
+    assert bundle["bundle_hash"].startswith("sha256:")
+
+    api_result = client.post("/api/v1/evidence/verify", json=bundle).json()
+    assert api_result["valid"] is True
+    assert api_result["issues"] == []
+
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "verify_evidence.py"
+    verifier = runpy.run_path(str(script_path))["verify"]
+    assert verifier(bundle) == []
+
+
+def test_portable_bundle_detects_tampered_copy() -> None:
+    client.post("/api/v1/runtime/evaluate", json=evaluation_body())
+    bundle = client.get(
+        "/api/v1/runtime/policies/audit-integrity-policy/evidence-bundle?version=1"
+    ).json()
+    bundle["entries"][0]["event"]["decision"] = "tampered-copy"
+
+    report = client.post("/api/v1/evidence/verify", json=bundle).json()
+
+    assert report["valid"] is False
+    assert any("event content hash" in issue for issue in report["issues"])
+    assert any("manifest hash" in issue for issue in report["issues"])
+
+
+def test_bundle_hash_is_stable_across_exports() -> None:
+    client.post("/api/v1/runtime/evaluate", json=evaluation_body())
+    path = "/api/v1/runtime/policies/audit-integrity-policy/evidence-bundle?version=1"
+
+    first = client.get(path).json()
+    second = client.get(path).json()
+
+    assert first["bundle_hash"] == second["bundle_hash"]
