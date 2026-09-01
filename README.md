@@ -77,6 +77,18 @@ The interactive `/api/v1/demo/delegations/evaluate` endpoint is restricted to
 the offline simulator. Razorpay Test Mode keeps authority administration
 disabled until an authenticated administrative integration is provided.
 
+## Captured-funds conservation
+
+The Refund Lab keeps a cumulative, idempotent ledger for every verified capture.
+A stateless check may allow two refunds because each is smaller than the
+original payment; ArthaNiyam denies any request that would make successful
+refunds exceed captured funds. Refund IDs cannot be replayed with changed
+amounts, and an action without a verified capture cannot be refunded.
+
+`POST /api/v1/demo/refunds/evaluate` executes deterministic simulator refunds
+only. It is disabled in Razorpay Test Mode until authenticated refund-operator
+authorization and a production-grade provider workflow are added.
+
 ```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload

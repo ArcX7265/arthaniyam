@@ -1,6 +1,9 @@
 from typing import Literal
 
+from pydantic import Field
+
 from app.policy.models import StrictModel
+from app.runtime.models import DecisionDetail
 
 
 class OrderExecutionRequest(StrictModel):
@@ -64,3 +67,28 @@ class WebhookResult(StrictModel):
     event_type: str
     status: Literal["processed", "duplicate", "ignored"]
     action_id: str | None = None
+
+
+class RefundEvaluationRequest(StrictModel):
+    policy_id: str
+    policy_version: int = 1
+    action_id: str
+    refund_id: str
+    amount: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=240)
+
+
+class RefundEvaluationResult(StrictModel):
+    policy_id: str
+    policy_version: int
+    action_id: str
+    refund_id: str
+    provider_refund_id: str | None = None
+    status: Literal["executed", "denied"]
+    naive_gateway: DecisionDetail
+    arthaniyam: DecisionDetail
+    captured_amount: int
+    refunded_before: int
+    refunded_after: int
+    remaining_refundable: int
+    replayed: bool = False

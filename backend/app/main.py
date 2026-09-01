@@ -17,8 +17,11 @@ from app.payments.models import (
     OrderExecutionResult,
     PaymentConfirmationRequest,
     PaymentConfirmationResult,
+    RefundEvaluationRequest,
+    RefundEvaluationResult,
     WebhookResult,
 )
+from app.payments.refunds import RefundService
 from app.payments.service import PaymentExecutionService
 from app.payments.webhooks import RazorpayWebhookService, WebhookVerificationError
 from app.policy.models import PolicyDefinition
@@ -75,6 +78,7 @@ policy_compiler = create_policy_compiler(
     settings.policy_compiler_mode, settings.openai_api_key, settings.openai_model
 )
 approval_service = ApprovalService(runtime_guard)
+refund_service = RefundService(runtime_guard)
 
 
 @app.get("/", include_in_schema=False)
@@ -96,6 +100,7 @@ def system_capabilities() -> dict[str, str | bool]:
         "policy_compiler_mode": settings.policy_compiler_mode,
         "demo_approvals_enabled": settings.razorpay_mode == "simulate",
         "demo_delegations_enabled": settings.razorpay_mode == "simulate",
+        "demo_refunds_enabled": settings.razorpay_mode == "simulate",
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }
@@ -178,6 +183,21 @@ def require_simulator_approval_demo() -> None:
             status_code=403,
             detail="demo approvals are disabled outside the offline payment simulator",
         )
+
+
+@app.post("/api/v1/demo/refunds/evaluate", response_model=RefundEvaluationResult)
+def evaluate_demo_refund(
+    request: RefundEvaluationRequest,
+) -> RefundEvaluationResult:
+    """Execute a cumulative refund only inside the offline simulator."""
+
+    require_simulator_approval_demo()
+    try:
+        return refund_service.evaluate(request)
+    except RuntimeActionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/demo/approvals/challenges", response_model=ApprovalChallenge)

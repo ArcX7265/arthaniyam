@@ -185,6 +185,18 @@ class SQLiteRuntimeRepository:
                     FOREIGN KEY (policy_id, version)
                         REFERENCES policies(policy_id, version)
                 );
+
+                CREATE TABLE IF NOT EXISTS refunds (
+                    policy_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    action_id TEXT NOT NULL,
+                    refund_id TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    PRIMARY KEY (policy_id, version, refund_id)
+                );
                 """
             )
             columns = {
@@ -200,6 +212,7 @@ class SQLiteRuntimeRepository:
 
     def reset(self) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM refunds")
             connection.execute("DELETE FROM authority_grants")
             connection.execute("DELETE FROM approval_grants")
             connection.execute("DELETE FROM approval_challenges")
@@ -211,6 +224,58 @@ class SQLiteRuntimeRepository:
             connection.execute("DELETE FROM evaluations")
             connection.execute("DELETE FROM ledger_entries")
             connection.execute("DELETE FROM policies")
+
+    def get_refund(
+        self, policy_id: str, version: int, refund_id: str
+    ) -> tuple[str, str] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT fingerprint, result_json FROM refunds
+                WHERE policy_id = ? AND version = ? AND refund_id = ?""",
+                (policy_id, version, refund_id),
+            ).fetchone()
+        return (row["fingerprint"], row["result_json"]) if row else None
+
+    def executed_refund_total(
+        self, policy_id: str, version: int, action_id: str
+    ) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT COALESCE(SUM(amount), 0) AS total FROM refunds
+                WHERE policy_id = ? AND version = ? AND action_id = ?
+                AND status = 'executed'""",
+                (policy_id, version, action_id),
+            ).fetchone()
+        return int(row["total"])
+
+    def save_refund(
+        self,
+        policy_id: str,
+        version: int,
+        action_id: str,
+        refund_id: str,
+        amount: int,
+        status: str,
+        fingerprint: str,
+        result_json: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO refunds(
+                    policy_id, version, action_id, refund_id, amount,
+                    status, fingerprint, result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    policy_id,
+                    version,
+                    action_id,
+                    refund_id,
+                    amount,
+                    status,
+                    fingerprint,
+                    result_json,
+                ),
+            )
 
     def save_delegation(
         self,
