@@ -91,17 +91,18 @@ authorization and a production-grade provider workflow are added.
 
 ## Adversarial evaluation suite
 
-The dashboard can run a fixed six-scenario red-team benchmark covering split
-payments, budget exhaustion, duplicate invoices, approval spoofing, delegated
-authority multiplication, and cumulative over-refunds. Each scenario runs in
-an isolated temporary SQLite ledger and compares the decision of a stateless
-gateway with the stateful ArthaNiyam guard.
+The dashboard can run a fixed mixed benchmark with six attacks and four benign
+controls. The attacks cover split payments, budget exhaustion, duplicate
+invoices, approval spoofing, delegated authority multiplication, and cumulative
+over-refunds. The controls verify that independent payments, within-budget
+reservations, conservative delegation, and bounded refunds remain available.
+Each scenario runs in an isolated temporary SQLite ledger.
 
 `POST /api/v1/evaluations/run` persists a report containing per-scenario
 evidence and a canonical SHA-256 hash. `GET /api/v1/evaluations/{run_id}`
-retrieves the exact report. The displayed percentage is deliberately limited
-to attack recall on this known fixed suite; it is not presented as production
-accuracy, fraud recall, or a false-positive measurement.
+retrieves the exact report. The dashboard reports attack recall, false-positive
+rate on the benign controls, and total fixed-suite accuracy separately. These
+are benchmark measurements, not claims about production fraud distributions.
 
 ```powershell
 cd backend

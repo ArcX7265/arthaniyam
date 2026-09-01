@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 from tempfile import mkstemp
+from typing import Literal
 from uuid import uuid4
 
 from app.payments.gateway import SimulatedRazorpayGateway
@@ -27,6 +28,8 @@ from app.runtime.storage import SQLiteRuntimeRepository
 
 class AdversarialScenarioResult(StrictModel):
     scenario_id: str
+    scenario_type: Literal["attack", "benign"]
+    expected_outcome: Literal["block", "allow"]
     invariant: str
     attack: str
     naive_decision: str
@@ -40,9 +43,16 @@ class AdversarialEvaluationReport(StrictModel):
     run_id: str
     created_at: datetime
     total_scenarios: int
+    attack_scenarios: int
+    benign_scenarios: int
     attacks_caught: int
+    benign_allowed: int
+    false_positives: int
     naive_gateway_misses: int
     coverage_percent: float
+    attack_recall_percent: float
+    false_positive_rate_percent: float
+    accuracy_percent: float
     evidence_hash: str
     scenarios: list[AdversarialScenarioResult]
 
@@ -66,21 +76,40 @@ class AdversarialEvaluationService:
                 self._approval_spoof(guard),
                 self._authority_multiplication(guard),
                 self._cumulative_refund(guard),
+                self._independent_payments(guard),
+                self._within_budget(guard),
+                self._conservative_delegation(guard),
+                self._bounded_refunds(guard),
             ]
         finally:
             for suffix in ("", "-wal", "-shm"):
                 Path(f"{database_path}{suffix}").unlink(missing_ok=True)
-        caught = sum(result.passed for result in scenarios)
+        attacks = [result for result in scenarios if result.scenario_type == "attack"]
+        benign = [result for result in scenarios if result.scenario_type == "benign"]
+        caught = sum(result.passed for result in attacks)
+        benign_allowed = sum(result.passed for result in benign)
+        false_positives = len(benign) - benign_allowed
         digest = self._evidence_hash(scenarios)
         report = AdversarialEvaluationReport(
             run_id=str(uuid4()),
             created_at=datetime.now(timezone.utc),
             total_scenarios=len(scenarios),
+            attack_scenarios=len(attacks),
+            benign_scenarios=len(benign),
             attacks_caught=caught,
+            benign_allowed=benign_allowed,
+            false_positives=false_positives,
             naive_gateway_misses=sum(
-                result.naive_decision == "allow" for result in scenarios
+                result.naive_decision == "allow" for result in attacks
             ),
-            coverage_percent=round(caught / len(scenarios) * 100, 1),
+            coverage_percent=round(caught / len(attacks) * 100, 1),
+            attack_recall_percent=round(caught / len(attacks) * 100, 1),
+            false_positive_rate_percent=round(
+                false_positives / len(benign) * 100, 1
+            ),
+            accuracy_percent=round(
+                (caught + benign_allowed) / len(scenarios) * 100, 1
+            ),
             evidence_hash=digest,
             scenarios=scenarios,
         )
@@ -262,6 +291,139 @@ class AdversarialEvaluationService:
             {"captured": result.captured_amount, "attempted_refund": 1_080_000},
         )
 
+    def _independent_payments(self, guard: RuntimeGuard) -> AdversarialScenarioResult:
+        policy = self._policy("eval-independent")
+        guard.evaluate(
+            RuntimeEvaluationRequest(
+                policy=policy,
+                action=self._action(
+                    "independent-1", amount=400_000, purpose="laptops"
+                ),
+            )
+        )
+        result = guard.evaluate(
+            RuntimeEvaluationRequest(
+                policy=policy,
+                action=self._action(
+                    "independent-2", amount=400_000, purpose="chairs"
+                ),
+            )
+        )
+        return self._scenario(
+            "independent-payments",
+            "Independent purchases remain available",
+            "Two valid payments have distinct correlation purposes",
+            result.naive_gateway.decision,
+            result.arthaniyam.decision,
+            result.arthaniyam.reason_codes[0],
+            {"payment_amount": 400_000, "correlated_amount": result.correlated_amount},
+            scenario_type="benign",
+        )
+
+    def _within_budget(self, guard: RuntimeGuard) -> AdversarialScenarioResult:
+        policy = self._policy(
+            "eval-within-budget", monthly=1_500_000, threshold=1_500_000
+        )
+        guard.evaluate(
+            RuntimeEvaluationRequest(
+                policy=policy,
+                action=self._action("within-budget-1", amount=700_000),
+            )
+        )
+        result = guard.evaluate(
+            RuntimeEvaluationRequest(
+                policy=policy,
+                action=self._action(
+                    "within-budget-2", amount=700_000, purpose="chairs"
+                ),
+            )
+        )
+        return self._scenario(
+            "within-budget",
+            "Valid reservations are not over-blocked",
+            "Two reservations total less than the monthly budget",
+            result.naive_gateway.decision,
+            result.arthaniyam.decision,
+            result.arthaniyam.reason_codes[0],
+            {"reserved_total": 1_400_000, "budget": 1_500_000},
+            scenario_type="benign",
+        )
+
+    def _conservative_delegation(
+        self, guard: RuntimeGuard
+    ) -> AdversarialScenarioResult:
+        policy = self._policy("eval-safe-delegation", threshold=5_000_000)
+        expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+        for sequence, child in ((1, "buyer-safe-a"), (2, "buyer-safe-b")):
+            result = guard.evaluate_delegation(
+                DelegationEvaluationRequest(
+                    policy=policy,
+                    grant=DelegationGrant(
+                        grant_id=f"safe-authority-{sequence}",
+                        parent_agent_id="root-agent",
+                        child_agent_id=child,
+                        authority_limit=2_000_000,
+                        expires_at=expiry,
+                    ),
+                )
+            )
+        return self._scenario(
+            "conservative-delegation",
+            "Conserved delegation remains usable",
+            "Two sibling grants allocate only 80% of parent authority",
+            result.naive_gateway.decision,
+            result.arthaniyam.decision,
+            result.arthaniyam.reason_codes[0],
+            {
+                "parent_authority": result.parent_authority,
+                "delegated_total": result.delegated_total,
+            },
+            scenario_type="benign",
+        )
+
+    def _bounded_refunds(self, guard: RuntimeGuard) -> AdversarialScenarioResult:
+        policy = self._policy("eval-safe-refund", threshold=5_000_000)
+        action = self._action("safe-refund-payment")
+        guard.evaluate(RuntimeEvaluationRequest(policy=policy, action=action))
+        payments = PaymentExecutionService(guard, SimulatedRazorpayGateway())
+        payments.create_order(
+            OrderExecutionRequest(
+                policy_id=policy.policy_id,
+                policy_version=policy.version,
+                action_id=action.action_id,
+            )
+        )
+        payments.confirm_payment(
+            PaymentConfirmationRequest(
+                policy_id=policy.policy_id,
+                policy_version=policy.version,
+                action_id=action.action_id,
+                simulated_outcome="success",
+            )
+        )
+        refunds = RefundService(guard)
+        for sequence in (1, 2):
+            result = refunds.evaluate(
+                RefundEvaluationRequest(
+                    policy_id=policy.policy_id,
+                    policy_version=policy.version,
+                    action_id=action.action_id,
+                    refund_id=f"safe-refund-{sequence}",
+                    amount=300_000,
+                    reason="benign evaluation",
+                )
+            )
+        return self._scenario(
+            "bounded-refunds",
+            "Legitimate refunds remain available",
+            "Two refunds total less than the captured payment",
+            result.naive_gateway.decision,
+            result.arthaniyam.decision,
+            result.arthaniyam.reason_codes[0],
+            {"captured": result.captured_amount, "refunded": result.refunded_after},
+            scenario_type="benign",
+        )
+
     @staticmethod
     def _policy(
         policy_id: str,
@@ -307,14 +469,24 @@ class AdversarialEvaluationService:
         arthaniyam: str,
         reason: str,
         evidence: dict[str, int | str | bool],
+        *,
+        scenario_type: Literal["attack", "benign"] = "attack",
     ) -> AdversarialScenarioResult:
+        expected_outcome = "block" if scenario_type == "attack" else "allow"
+        passed = (
+            naive == "allow" and arthaniyam in {"deny", "require_approval"}
+            if scenario_type == "attack"
+            else arthaniyam in {"allow", "allow_and_reserve"}
+        )
         return AdversarialScenarioResult(
             scenario_id=scenario_id,
+            scenario_type=scenario_type,
+            expected_outcome=expected_outcome,
             invariant=invariant,
             attack=attack,
             naive_decision=naive,
             arthaniyam_decision=arthaniyam,
-            passed=naive == "allow" and arthaniyam in {"deny", "require_approval"},
+            passed=passed,
             reason_code=reason,
             evidence=evidence,
         )

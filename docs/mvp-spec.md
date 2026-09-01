@@ -30,6 +30,10 @@ A naive gateway approves three related payments of INR 9,000 because each is bel
 
 The model checker is bounded. When it cannot find an attack, the UI must say: "No counterexample found within the tested model."
 
+The mixed evaluation benchmark reports attack recall across six known attacks
+and false-positive rate across four known benign controls. These fixed-suite
+metrics must not be described as production fraud accuracy.
+
 ## Non-goals
 
 - production money movement;
@@ -38,4 +42,3 @@ The model checker is bounded. When it cannot find an attack, the UI must say: "N
 - production AP2, x402, or UPI adapters;
 - blockchain settlement or zero-knowledge proofs; and
 - multi-region banking infrastructure.
-
