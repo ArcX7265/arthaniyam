@@ -103,12 +103,17 @@ authorization and a production-grade provider workflow are added.
 
 ## Adversarial evaluation suite
 
-The dashboard can run a fixed mixed benchmark with six attacks and four benign
-controls. The attacks cover split payments, budget exhaustion, duplicate
-invoices, approval spoofing, delegated authority multiplication, and cumulative
+The dashboard can run a fixed mixed benchmark with seven attacks and four benign
+controls. The attacks cover split payments, budget exhaustion, a concurrent
+budget burst, duplicate invoices, approval spoofing, delegated authority
+multiplication, and cumulative
 over-refunds. The controls verify that independent payments, within-budget
 reservations, conservative delegation, and bounded refunds remain available.
 Each scenario runs in an isolated temporary SQLite ledger.
+
+The concurrent burst uses twelve worker threads against one runtime instance.
+It demonstrates atomic admission inside this prototype process; it does not
+claim multi-process or distributed transaction safety.
 
 `POST /api/v1/evaluations/run` persists a report containing per-scenario
 evidence and a canonical SHA-256 hash. `GET /api/v1/evaluations/{run_id}`
@@ -118,7 +123,7 @@ are benchmark measurements, not claims about production fraud distributions.
 
 ## Seeded boundary campaign
 
-The boundary campaign goes beyond the ten hand-authored scenarios by generating
+The boundary campaign goes beyond the eleven hand-authored scenarios by generating
 balanced attack and benign cases immediately above and below the correlated
 approval and monthly-budget limits. A small independent arithmetic oracle sets
 the expected outcome before the runtime guard is evaluated.

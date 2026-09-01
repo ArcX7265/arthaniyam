@@ -19,13 +19,13 @@ def test_mixed_suite_catches_attacks_without_blocking_benign_controls() -> None:
 
     assert response.status_code == 200
     report = response.json()
-    assert report["total_scenarios"] == 10
-    assert report["attack_scenarios"] == 6
+    assert report["total_scenarios"] == 11
+    assert report["attack_scenarios"] == 7
     assert report["benign_scenarios"] == 4
-    assert report["attacks_caught"] == 6
+    assert report["attacks_caught"] == 7
     assert report["benign_allowed"] == 4
     assert report["false_positives"] == 0
-    assert report["naive_gateway_misses"] == 6
+    assert report["naive_gateway_misses"] == 7
     assert report["coverage_percent"] == 100.0
     assert report["attack_recall_percent"] == 100.0
     assert report["false_positive_rate_percent"] == 0.0
@@ -38,15 +38,26 @@ def test_mixed_suite_catches_attacks_without_blocking_benign_controls() -> None:
         "approval-spoof",
         "authority-multiplication",
         "cumulative-refund",
+        "concurrent-budget-burst",
         "independent-payments",
         "within-budget",
         "conservative-delegation",
         "bounded-refunds",
     }
     assert all(scenario["passed"] for scenario in report["scenarios"])
+    burst = next(
+        scenario
+        for scenario in report["scenarios"]
+        if scenario["scenario_id"] == "concurrent-budget-burst"
+    )
+    assert burst["evidence"]["requests"] == 12
+    assert burst["evidence"]["arthaniyam_admitted_actions"] == 5
+    assert burst["evidence"]["arthaniyam_denied_actions"] == 7
+    assert burst["evidence"]["reserved_amount"] == 5_000_000
+    assert burst["evidence"]["invariant_holds"] is True
     assert sum(
         scenario["scenario_type"] == "attack" for scenario in report["scenarios"]
-    ) == 6
+    ) == 7
     assert sum(
         scenario["scenario_type"] == "benign" for scenario in report["scenarios"]
     ) == 4

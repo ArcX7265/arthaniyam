@@ -118,7 +118,7 @@ def system_capabilities() -> dict[str, str | bool | int]:
         "demo_approvals_enabled": settings.razorpay_mode == "simulate",
         "demo_delegations_enabled": settings.razorpay_mode == "simulate",
         "demo_refunds_enabled": settings.razorpay_mode == "simulate",
-        "adversarial_scenarios": 10,
+        "adversarial_scenarios": 11,
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }

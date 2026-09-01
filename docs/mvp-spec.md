@@ -30,9 +30,13 @@ A naive gateway approves three related payments of INR 9,000 because each is bel
 
 The model checker is bounded. When it cannot find an attack, the UI must say: "No counterexample found within the tested model."
 
-The mixed evaluation benchmark reports attack recall across six known attacks
+The mixed evaluation benchmark reports attack recall across seven known attacks
 and false-positive rate across four known benign controls. These fixed-suite
 metrics must not be described as production fraud accuracy.
+
+The concurrency scenario tests simultaneous threads within one runtime
+process. Horizontal multi-worker coordination and distributed locking remain
+outside the verified boundary.
 
 A seeded boundary campaign may generate 20–200 balanced cases immediately
 above and below the approval and monthly-budget limits. Its expected outcomes

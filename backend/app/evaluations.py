@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
@@ -76,6 +77,7 @@ class AdversarialEvaluationService:
                 self._approval_spoof(guard),
                 self._authority_multiplication(guard),
                 self._cumulative_refund(guard),
+                self._concurrent_budget_burst(guard),
                 self._independent_payments(guard),
                 self._within_budget(guard),
                 self._conservative_delegation(guard),
@@ -289,6 +291,54 @@ class AdversarialEvaluationService:
             result.arthaniyam.decision,
             result.arthaniyam.reason_codes[0],
             {"captured": result.captured_amount, "attempted_refund": 1_080_000},
+        )
+
+    def _concurrent_budget_burst(
+        self, guard: RuntimeGuard
+    ) -> AdversarialScenarioResult:
+        policy = self._policy(
+            "eval-concurrent-burst", monthly=5_000_000, threshold=5_000_000
+        )
+        actions = [
+            self._action(
+                f"burst-{sequence}",
+                amount=1_000_000,
+                purpose=f"independent-purpose-{sequence}",
+            )
+            for sequence in range(12)
+        ]
+
+        def evaluate(action: FinancialAction):
+            return guard.evaluate(RuntimeEvaluationRequest(policy=policy, action=action))
+
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            results = list(executor.map(evaluate, actions))
+        admitted = [
+            result
+            for result in results
+            if result.arthaniyam.decision == "allow_and_reserve"
+        ]
+        denied = [
+            result for result in results if result.arthaniyam.decision == "deny"
+        ]
+        reserved = guard.state(policy.policy_id, policy.version).state.reserved_amount
+        invariant_holds = reserved <= policy.budget.monthly_limit and len(admitted) == 5
+        return self._scenario(
+            "concurrent-budget-burst",
+            "Concurrent reservations cannot overspend a shared budget",
+            "Twelve simultaneous locally valid requests compete for five slots",
+            "allow",
+            "deny" if invariant_holds else "allow",
+            "CONCURRENT_BUDGET_CONSERVED" if invariant_holds else "BUDGET_RACE_DETECTED",
+            {
+                "requests": len(actions),
+                "naive_admitted_amount": sum(action.amount for action in actions),
+                "arthaniyam_admitted_actions": len(admitted),
+                "arthaniyam_denied_actions": len(denied),
+                "reserved_amount": reserved,
+                "budget": policy.budget.monthly_limit,
+                "invariant_holds": invariant_holds,
+            },
         )
 
     def _independent_payments(self, guard: RuntimeGuard) -> AdversarialScenarioResult:
