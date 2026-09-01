@@ -46,6 +46,7 @@ def test_dashboard_assets_are_available() -> None:
     assert "replayProof" in script.text
     assert "compilePolicy" in script.text
     assert "approveChallenge" in script.text
+    assert "runDelegationAttack" in script.text
 
 
 def test_policy_schema_rejects_transaction_limit_above_budget() -> None:

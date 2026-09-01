@@ -64,6 +64,19 @@ hard-disabled whenever `RAZORPAY_MODE=test`. They intentionally simulate the
 human step for the buildathon walkthrough; a real deployment must replace them
 with authenticated approver identity and authorization.
 
+## Conserved delegation authority
+
+The Delegation Lab models authority as a stateful graph rather than an
+independent flag on each request. It rejects sibling grants whose total exceeds
+their parent's authority, cycles, multiple active parents, expired grants, and
+paths beyond the configured depth. Delegated authority also constrains the
+child's combined committed spend and active reservations, while outbound grants
+reduce the parent's remaining spending authority.
+
+The interactive `/api/v1/demo/delegations/evaluate` endpoint is restricted to
+the offline simulator. Razorpay Test Mode keeps authority administration
+disabled until an authenticated administrative integration is provided.
+
 ```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload

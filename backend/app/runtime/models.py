@@ -33,6 +33,36 @@ class RuntimeEvaluationRequest(StrictModel):
     action: FinancialAction
 
 
+class DelegationGrant(StrictModel):
+    grant_id: str = Field(min_length=3, max_length=120)
+    parent_agent_id: str = Field(min_length=3, max_length=120)
+    child_agent_id: str = Field(min_length=3, max_length=120)
+    authority_limit: int = Field(gt=0, description="Delegated authority in paise")
+    expires_at: datetime
+
+    @model_validator(mode="after")
+    def cannot_delegate_to_self(self) -> "DelegationGrant":
+        if self.parent_agent_id == self.child_agent_id:
+            raise ValueError("parent and child agents must be different")
+        return self
+
+
+class DelegationEvaluationRequest(StrictModel):
+    policy: PolicyDefinition
+    grant: DelegationGrant
+
+
+class DelegationComparison(StrictModel):
+    grant_id: str
+    naive_gateway: "DecisionDetail"
+    arthaniyam: "DecisionDetail"
+    parent_authority: int
+    delegated_total: int
+    remaining_authority: int
+    replayed: bool = False
+    audit_event: "AuditEvent"
+
+
 class DecisionDetail(StrictModel):
     decision: NaiveDecision | ArthaniyamDecision
     reason_codes: list[str]
@@ -56,7 +86,7 @@ class AuditEvent(StrictModel):
     event_type: Literal[
         "evaluation", "idempotent_replay", "commit", "release", "order_created",
         "payment_verified", "payment_failed", "webhook_received",
-        "approval_challenge", "approval_granted"
+        "approval_challenge", "approval_granted", "delegation_evaluation"
     ]
     decision: str
     occurred_at: datetime

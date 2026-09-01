@@ -7,8 +7,9 @@ from uuid import uuid4
 from app.approvals.binding import approval_binding
 from app.policy.models import PolicyDefinition
 from app.runtime.models import (
-    ActionTransitionResult, AuditEvent, DecisionDetail, FinancialAction,
-    RuntimeComparison, RuntimeEvaluationRequest, RuntimeStateResponse, StateSnapshot,
+    ActionTransitionResult, AuditEvent, DecisionDetail, DelegationComparison,
+    DelegationEvaluationRequest, DelegationGrant, FinancialAction, RuntimeComparison,
+    RuntimeEvaluationRequest, RuntimeStateResponse, StateSnapshot,
 )
 from app.runtime.storage import SQLiteRuntimeRepository, StoredLedgerEntry
 
@@ -95,6 +96,130 @@ class RuntimeGuard:
                 fingerprint, response,
             )
             return response
+
+    def evaluate_delegation(
+        self, request: DelegationEvaluationRequest
+    ) -> DelegationComparison:
+        with self._lock:
+            policy, grant = request.policy, request.grant
+            try:
+                self.repository.register_policy(policy)
+            except ValueError as exc:
+                raise RuntimeTransitionError(str(exc)) from exc
+            fingerprint = grant.model_dump_json()
+            prior = self.repository.get_delegation(
+                policy.policy_id, policy.version, grant.grant_id
+            )
+            if prior is not None:
+                if prior.fingerprint == fingerprint:
+                    event = self._event(
+                        grant.grant_id,
+                        "delegation_evaluation",
+                        prior.response.arthaniyam.decision,
+                        ["IDEMPOTENT_REPLAY"],
+                    )
+                    self.repository.append_audit(policy.policy_id, policy.version, event)
+                    return prior.response.model_copy(
+                        update={"replayed": True, "audit_event": event}
+                    )
+                return self._delegation_result(
+                    policy,
+                    grant,
+                    self._deny(
+                        "IDEMPOTENCY_KEY_CONFLICT",
+                        "The grant ID was already used with different contents.",
+                    ),
+                    0,
+                )
+
+            now = datetime.now(timezone.utc)
+            parent_authority = self._agent_authority_limit(
+                policy, grant.parent_agent_id, now
+            )
+            naive = (
+                DecisionDetail(
+                    decision="allow",
+                    reason_codes=["LOCAL_GRANT_LIMIT_PASSED"],
+                    explanation="The grant fits the parent's total authority in isolation.",
+                )
+                if grant.authority_limit <= parent_authority and grant.expires_at > now
+                else self._deny(
+                    "LOCAL_GRANT_INVALID",
+                    "The individual grant exceeds authority or is already expired.",
+                )
+            )
+            active = self._active_delegations(policy, now)
+            delegated_before = sum(
+                item.grant.authority_limit
+                for item in active
+                if item.grant.parent_agent_id == grant.parent_agent_id
+            )
+            delegated_total = delegated_before + grant.authority_limit
+            reason: DecisionDetail | None = None
+            if not policy.delegation.enabled:
+                reason = self._deny("DELEGATION_DISABLED", "This policy does not allow delegation.")
+            elif grant.expires_at <= now:
+                reason = self._deny("GRANT_EXPIRED", "A grant must expire in the future.")
+            elif any(item.grant.child_agent_id == grant.child_agent_id for item in active):
+                reason = self._deny(
+                    "CHILD_ALREADY_DELEGATED",
+                    "A child agent can have only one active authority parent.",
+                )
+            elif self._would_create_cycle(active, grant):
+                reason = self._deny(
+                    "DELEGATION_CYCLE",
+                    "The proposed authority edge would create a delegation cycle.",
+                )
+            elif self._agent_depth(active, grant.parent_agent_id) + 1 > policy.delegation.maximum_depth:
+                reason = self._deny(
+                    "DELEGATION_DEPTH_EXCEEDED",
+                    "The proposed child exceeds the maximum delegation depth.",
+                )
+            elif policy.delegation.conserve_authority and delegated_total > parent_authority:
+                reason = self._deny(
+                    "DELEGATED_AUTHORITY_MULTIPLICATION",
+                    "Sibling grants would exceed the parent's conserved authority.",
+                )
+            arthaniyam = reason or DecisionDetail(
+                decision="allow",
+                reason_codes=["AUTHORITY_CONSERVED", "DELEGATION_RECORDED"],
+                explanation="The grant was recorded without multiplying parent authority.",
+            )
+            result = DelegationComparison(
+                grant_id=grant.grant_id,
+                naive_gateway=naive,
+                arthaniyam=arthaniyam,
+                parent_authority=parent_authority,
+                delegated_total=delegated_total,
+                remaining_authority=max(
+                    0,
+                    parent_authority
+                    - (
+                        delegated_total
+                        if arthaniyam.decision == "allow"
+                        else delegated_before
+                    ),
+                ),
+                audit_event=self._event(
+                    grant.grant_id,
+                    "delegation_evaluation",
+                    arthaniyam.decision,
+                    arthaniyam.reason_codes,
+                ),
+            )
+            self.repository.append_audit(
+                policy.policy_id, policy.version, result.audit_event
+            )
+            if arthaniyam.decision == "allow":
+                self.repository.save_delegation(
+                    policy.policy_id,
+                    policy.version,
+                    grant,
+                    fingerprint,
+                    result,
+                    now,
+                )
+            return result
 
     def commit(self, policy_id: str, policy_version: int, action_id: str) -> ActionTransitionResult:
         with self._lock:
@@ -197,6 +322,17 @@ class RuntimeGuard:
             return self._deny("DUPLICATE_INVOICE", "This invoice already has an active reservation or committed payment."), action.amount
         if sum(entry.action.amount for entry in active) + action.amount > policy.budget.monthly_limit:
             return self._deny("BUDGET_EXCEEDED", "Committed spend plus active reservations would exceed the budget."), action.amount
+        authority_limit = self._agent_spend_limit(policy, action.agent_id)
+        agent_spend = sum(
+            entry.action.amount
+            for entry in active
+            if entry.action.agent_id == action.agent_id
+        )
+        if agent_spend + action.amount > authority_limit:
+            return self._deny(
+                "DELEGATED_AUTHORITY_EXCEEDED",
+                "This agent's spend plus reservations exceeds its conserved authority.",
+            ), action.amount
 
         cutoff = datetime.now(timezone.utc) - timedelta(hours=policy.correlation.window_hours)
         correlated = [entry for entry in active if entry.created_at >= cutoff and self._correlation_key(policy, entry.action) == self._correlation_key(policy, action)]
@@ -276,6 +412,98 @@ class RuntimeGuard:
     def _same_action_scope(first: FinancialAction, second: FinancialAction) -> bool:
         return first.model_dump(exclude={"approval_ids"}) == second.model_dump(
             exclude={"approval_ids"}
+        )
+
+    def _active_delegations(self, policy: PolicyDefinition, now: datetime):
+        return [
+            item
+            for item in self.repository.list_delegations(policy.policy_id, policy.version)
+            if item.grant.expires_at > now
+        ]
+
+    def _agent_authority_limit(
+        self, policy: PolicyDefinition, agent_id: str, now: datetime
+    ) -> int:
+        incoming = [
+            item.grant.authority_limit
+            for item in self._active_delegations(policy, now)
+            if item.grant.child_agent_id == agent_id
+        ]
+        return incoming[0] if incoming else policy.budget.monthly_limit
+
+    def _agent_spend_limit(self, policy: PolicyDefinition, agent_id: str) -> int:
+        now = datetime.now(timezone.utc)
+        active = self._active_delegations(policy, now)
+        base = self._agent_authority_limit(policy, agent_id, now)
+        delegated = sum(
+            item.grant.authority_limit
+            for item in active
+            if item.grant.parent_agent_id == agent_id
+        )
+        return max(0, base - delegated)
+
+    @staticmethod
+    def _would_create_cycle(active, proposed: DelegationGrant) -> bool:
+        adjacency: dict[str, set[str]] = {}
+        for item in active:
+            adjacency.setdefault(item.grant.parent_agent_id, set()).add(
+                item.grant.child_agent_id
+            )
+        adjacency.setdefault(proposed.parent_agent_id, set()).add(proposed.child_agent_id)
+        pending = [proposed.child_agent_id]
+        visited: set[str] = set()
+        while pending:
+            current = pending.pop()
+            if current == proposed.parent_agent_id:
+                return True
+            if current not in visited:
+                visited.add(current)
+                pending.extend(adjacency.get(current, set()))
+        return False
+
+    @staticmethod
+    def _agent_depth(active, agent_id: str) -> int:
+        parents = {
+            item.grant.child_agent_id: item.grant.parent_agent_id for item in active
+        }
+        depth = 0
+        current = agent_id
+        seen: set[str] = set()
+        while current in parents and current not in seen:
+            seen.add(current)
+            current = parents[current]
+            depth += 1
+        return depth
+
+    def _delegation_result(
+        self,
+        policy: PolicyDefinition,
+        grant: DelegationGrant,
+        decision: DecisionDetail,
+        delegated_total: int,
+    ) -> DelegationComparison:
+        parent_authority = self._agent_authority_limit(
+            policy, grant.parent_agent_id, datetime.now(timezone.utc)
+        )
+        event = self._event(
+            grant.grant_id,
+            "delegation_evaluation",
+            decision.decision,
+            decision.reason_codes,
+        )
+        self.repository.append_audit(policy.policy_id, policy.version, event)
+        return DelegationComparison(
+            grant_id=grant.grant_id,
+            naive_gateway=DecisionDetail(
+                decision="allow",
+                reason_codes=["LOCAL_GRANT_LIMIT_PASSED"],
+                explanation="A request-local gateway does not remember the earlier grant ID.",
+            ),
+            arthaniyam=decision,
+            parent_authority=parent_authority,
+            delegated_total=delegated_total,
+            remaining_authority=max(0, parent_authority - delegated_total),
+            audit_event=event,
         )
 
     @staticmethod

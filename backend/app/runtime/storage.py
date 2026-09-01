@@ -8,7 +8,13 @@ from datetime import datetime
 from pathlib import Path
 
 from app.policy.models import PolicyDefinition
-from app.runtime.models import AuditEvent, FinancialAction, RuntimeComparison
+from app.runtime.models import (
+    AuditEvent,
+    DelegationComparison,
+    DelegationGrant,
+    FinancialAction,
+    RuntimeComparison,
+)
 
 
 DEFAULT_DATABASE_PATH = Path(
@@ -37,6 +43,14 @@ class StoredProof:
     request_json: str
     result_json: str
     evidence_hash: str
+    created_at: datetime
+
+
+@dataclass
+class StoredDelegation:
+    fingerprint: str
+    grant: DelegationGrant
+    response: DelegationComparison
     created_at: datetime
 
 
@@ -156,6 +170,21 @@ class SQLiteRuntimeRepository:
                     UNIQUE(challenge_id, approver_id),
                     FOREIGN KEY (challenge_id) REFERENCES approval_challenges(challenge_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS authority_grants (
+                    policy_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    grant_id TEXT NOT NULL,
+                    parent_agent_id TEXT NOT NULL,
+                    child_agent_id TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    grant_json TEXT NOT NULL,
+                    response_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (policy_id, version, grant_id),
+                    FOREIGN KEY (policy_id, version)
+                        REFERENCES policies(policy_id, version)
+                );
                 """
             )
             columns = {
@@ -171,6 +200,7 @@ class SQLiteRuntimeRepository:
 
     def reset(self) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM authority_grants")
             connection.execute("DELETE FROM approval_grants")
             connection.execute("DELETE FROM approval_challenges")
             connection.execute("DELETE FROM proof_runs")
@@ -181,6 +211,58 @@ class SQLiteRuntimeRepository:
             connection.execute("DELETE FROM evaluations")
             connection.execute("DELETE FROM ledger_entries")
             connection.execute("DELETE FROM policies")
+
+    def save_delegation(
+        self,
+        policy_id: str,
+        version: int,
+        grant: DelegationGrant,
+        fingerprint: str,
+        response: DelegationComparison,
+        created_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO authority_grants(
+                    policy_id, version, grant_id, parent_agent_id, child_agent_id,
+                    fingerprint, grant_json, response_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    policy_id,
+                    version,
+                    grant.grant_id,
+                    grant.parent_agent_id,
+                    grant.child_agent_id,
+                    fingerprint,
+                    grant.model_dump_json(),
+                    response.model_dump_json(),
+                    created_at.isoformat(),
+                ),
+            )
+
+    def get_delegation(
+        self, policy_id: str, version: int, grant_id: str
+    ) -> StoredDelegation | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT fingerprint, grant_json, response_json, created_at
+                FROM authority_grants
+                WHERE policy_id = ? AND version = ? AND grant_id = ?""",
+                (policy_id, version, grant_id),
+            ).fetchone()
+        return self._delegation_from_row(row) if row else None
+
+    def list_delegations(
+        self, policy_id: str, version: int
+    ) -> list[StoredDelegation]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT fingerprint, grant_json, response_json, created_at
+                FROM authority_grants WHERE policy_id = ? AND version = ?
+                ORDER BY created_at""",
+                (policy_id, version),
+            ).fetchall()
+        return [self._delegation_from_row(row) for row in rows]
 
     def save_approval_challenge(self, challenge_json: str) -> None:
         challenge = json.loads(challenge_json)
@@ -580,5 +662,14 @@ class SQLiteRuntimeRepository:
         return StoredLedgerEntry(
             action=FinancialAction.model_validate_json(row["action_json"]),
             status=row["status"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    @staticmethod
+    def _delegation_from_row(row: sqlite3.Row) -> StoredDelegation:
+        return StoredDelegation(
+            fingerprint=row["fingerprint"],
+            grant=DelegationGrant.model_validate_json(row["grant_json"]),
+            response=DelegationComparison.model_validate_json(row["response_json"]),
             created_at=datetime.fromisoformat(row["created_at"]),
         )

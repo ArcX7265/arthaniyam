@@ -41,6 +41,8 @@ from app.runtime.guard import (
 from app.runtime.models import (
     ActionTransitionRequest,
     ActionTransitionResult,
+    DelegationComparison,
+    DelegationEvaluationRequest,
     RuntimeComparison,
     RuntimeEvaluationRequest,
     RuntimeStateResponse,
@@ -93,6 +95,7 @@ def system_capabilities() -> dict[str, str | bool]:
         "webhook_configured": webhook_service is not None,
         "policy_compiler_mode": settings.policy_compiler_mode,
         "demo_approvals_enabled": settings.razorpay_mode == "simulate",
+        "demo_delegations_enabled": settings.razorpay_mode == "simulate",
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }
@@ -149,6 +152,22 @@ def evaluate_runtime_action(request: RuntimeEvaluationRequest) -> RuntimeCompari
 
     try:
         return runtime_guard.evaluate(request)
+    except RuntimeTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/demo/delegations/evaluate",
+    response_model=DelegationComparison,
+)
+def evaluate_demo_delegation(
+    request: DelegationEvaluationRequest,
+) -> DelegationComparison:
+    """Exercise the authority graph only with the offline payment simulator."""
+
+    require_simulator_approval_demo()
+    try:
+        return runtime_guard.evaluate_delegation(request)
     except RuntimeTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
