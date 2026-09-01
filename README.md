@@ -24,6 +24,13 @@ See `docs/mvp-spec.md` for the implementation boundary.
 
 ## Current runnable slice
 
+The home page now begins with a **90-second guided demo**. One click evaluates
+the two-payment split attack in an isolated ledger, compares the local gateway
+with ArthaNiyam on both requests, runs the complete judge scorecard, and
+persists a canonical narrative record. The same flow is available at `POST
+/api/v1/demo/guided-run`, with retrieval through `GET
+/api/v1/demo/guided-runs/{demo_id}`.
+
 The first vertical slice uses Z3 to search for a correlated split-payment
 sequence that a request-by-request gateway would allow even though the combined
 commitment requires approval. The response contains the concrete actions, both

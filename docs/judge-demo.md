@@ -2,17 +2,19 @@
 
 ## The 90-second path
 
-1. Open the dashboard and scroll to **Buildathon judge mode**.
-2. Click **Generate judge scorecard**.
-3. Explain that three independent mechanisms are running: Z3 searches for an
+1. Open the dashboard and click **Start 90-second demo**.
+2. Show how both INR 9,000 requests pass the local gateway, while ArthaNiyam
+   gates the second after observing INR 18,000 of correlated exposure.
+3. Use **Inspect full evidence** to continue to Buildathon judge mode.
+4. Explain that three independent mechanisms are running: Z3 searches for an
    unsafe sequence, fixed scenarios exercise known attacks and benign controls,
    and seeded boundary generation probes values immediately around policy
    limits.
-4. Point to the six checks, the combined test-case count, attack recall,
+5. Point to the six checks, the combined test-case count, attack recall,
    false-positive rate, and the canonical evidence hash.
-5. Point to **Honest boundary**. ArthaNiyam deliberately distinguishes measured
+6. Point to **Honest boundary**. ArthaNiyam deliberately distinguishes measured
    prototype evidence from claims it has not established.
-6. Download the verifiable JSON and run `python scripts/verify_scorecard.py
+7. Download the verifiable JSON and run `python scripts/verify_scorecard.py
    <downloaded-file>` to validate it independently from the server.
 
 ## The core sentence

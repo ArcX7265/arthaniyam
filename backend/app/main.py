@@ -17,6 +17,7 @@ from app.campaigns import (
     BoundaryCampaignService,
 )
 from app.evaluations import AdversarialEvaluationReport, AdversarialEvaluationService
+from app.guided_demo import GuidedDemoReport, GuidedDemoService
 from app.judge import (
     JudgeEvidenceBundle,
     JudgeEvidenceVerification,
@@ -104,6 +105,7 @@ boundary_campaign_service = BoundaryCampaignService(runtime_guard.repository)
 policy_impact_service = PolicyImpactService(runtime_guard.repository)
 audit_integrity_service = AuditIntegrityService(runtime_guard.repository)
 judge_scorecard_service = JudgeScorecardService(runtime_guard.repository)
+guided_demo_service = GuidedDemoService(runtime_guard.repository)
 
 
 @app.get("/", include_in_schema=False)
@@ -128,9 +130,25 @@ def system_capabilities() -> dict[str, str | bool | int]:
         "demo_refunds_enabled": settings.razorpay_mode == "simulate",
         "adversarial_scenarios": 11,
         "judge_scorecard_enabled": True,
+        "guided_demo_enabled": True,
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }
+
+
+@app.post("/api/v1/demo/guided-run", response_model=GuidedDemoReport)
+def run_guided_demo() -> GuidedDemoReport:
+    """Run the deterministic judge narrative in isolated ledgers."""
+
+    return guided_demo_service.run()
+
+
+@app.get("/api/v1/demo/guided-runs/{demo_id}", response_model=GuidedDemoReport)
+def get_guided_demo(demo_id: str) -> GuidedDemoReport:
+    try:
+        return guided_demo_service.get(demo_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="guided demo was not found") from exc
 
 
 @app.post(
