@@ -11,7 +11,11 @@ from app.runtime.models import (
     DelegationEvaluationRequest, DelegationGrant, FinancialAction, RuntimeComparison,
     RuntimeEvaluationRequest, RuntimeStateResponse, StateSnapshot,
 )
-from app.runtime.storage import SQLiteRuntimeRepository, StoredLedgerEntry
+from app.runtime.storage import (
+    AtomicReservation,
+    SQLiteRuntimeRepository,
+    StoredLedgerEntry,
+)
 
 
 class RuntimeActionNotFoundError(KeyError):
@@ -69,12 +73,19 @@ class RuntimeGuard:
             naive = self._naive_decision(policy, action)
             arthaniyam, correlated_amount = self._arthaniyam_decision(policy, action)
             if arthaniyam.decision == "allow_and_reserve":
-                self.repository.upsert_entry(
-                    policy.policy_id, policy.version, action, "reserved",
+                reservation = self.repository.reserve_entry_atomically(
+                    policy,
+                    action,
                     datetime.now(timezone.utc),
+                    self._agent_spend_limit(policy, action.agent_id),
+                    approval_binding(policy.policy_id, policy.version, action),
                 )
-                if (
-                    action.approval_ids
+                correlated_amount = reservation.correlated_amount
+                if reservation.status not in {"reserved", "idempotent"}:
+                    arthaniyam = self._reservation_denial(reservation)
+                elif (
+                    reservation.status == "reserved"
+                    and action.approval_ids
                     and "REQUIRED_APPROVAL_PRESENT" in arthaniyam.reason_codes
                 ):
                     self.repository.consume_approval_grants(action.approval_ids)
@@ -96,6 +107,50 @@ class RuntimeGuard:
                 fingerprint, response,
             )
             return response
+
+    def _reservation_denial(
+        self, reservation: AtomicReservation
+    ) -> DecisionDetail:
+        reasons = {
+            "idempotency_conflict": (
+                "IDEMPOTENCY_KEY_CONFLICT",
+                "The action ID was concurrently used with different contents.",
+            ),
+            "duplicate_invoice": (
+                "DUPLICATE_INVOICE",
+                "This invoice gained an active reservation before final admission.",
+            ),
+            "budget_exceeded": (
+                "BUDGET_EXCEEDED",
+                "A concurrent reservation consumed the remaining shared budget.",
+            ),
+            "authority_exceeded": (
+                "DELEGATED_AUTHORITY_EXCEEDED",
+                "Concurrent agent spend exhausted the delegated authority.",
+            ),
+            "approval_required": (
+                "CORRELATED_APPROVAL_THRESHOLD_EXCEEDED",
+                "Concurrent related commitments crossed the approval threshold.",
+            ),
+            "approval_invalid": (
+                "APPROVAL_INVALID_OR_EXPIRED",
+                "The supplied approval is not valid for the final shared state.",
+            ),
+        }
+        code, explanation = reasons.get(
+            reservation.status,
+            ("ATOMIC_RESERVATION_REJECTED", "The final atomic reservation was rejected."),
+        )
+        if reservation.status in {"approval_required", "approval_invalid"}:
+            return DecisionDetail(
+                decision="require_approval",
+                reason_codes=[code],
+                explanation=(
+                    f"{explanation} Related active payments now total "
+                    f"INR {reservation.correlated_amount / 100:,.2f}."
+                ),
+            )
+        return self._deny(code, explanation)
 
     def evaluate_delegation(
         self, request: DelegationEvaluationRequest

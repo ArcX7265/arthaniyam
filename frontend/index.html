@@ -38,7 +38,7 @@
 
       <section class="metrics-strip" aria-label="Platform capabilities">
         <article><span class="metric-index">01</span><strong>Bounded verification</strong><small>Z3-generated counterexamples</small></article>
-        <article><span class="metric-index">02</span><strong>Atomic reservations</strong><small>Concurrency-safe budget control</small></article>
+        <article><span class="metric-index">02</span><strong>Atomic reservations</strong><small>Shared-ledger concurrency control</small></article>
         <article><span class="metric-index">03</span><strong>Cross-request memory</strong><small>Vendor and purpose correlation</small></article>
         <article><span class="metric-index">04</span><strong>Replayable evidence</strong><small>Every decision leaves an audit event</small></article>
       </section>
@@ -107,14 +107,14 @@
       </section>
 
       <section class="evaluation-section section-shell" id="evaluation-lab">
-        <div class="section-heading"><div><div class="eyebrow">05 / Adversarial evaluation</div><h2>Catch attacks without blocking valid work</h2></div><p>Run seven attacks and four legitimate controls in an isolated ledger, including a simultaneous budget burst.</p></div>
+        <div class="section-heading"><div><div class="eyebrow">05 / Adversarial evaluation</div><h2>Catch attacks without blocking valid work</h2></div><p>Run seven attacks and four legitimate controls in an isolated ledger, including a twelve-instance simultaneous budget burst.</p></div>
         <div class="judge-command panel">
           <div><span class="panel-kicker">Buildathon judge mode</span><h3>One click. Three independent evidence paths.</h3><p>Run the symbolic solver, mixed benchmark, and seeded boundary campaign together, with the prototype's limitations shown beside the results.</p></div>
           <button class="run-button judge-run" id="run-judge-button" type="button"><span class="run-icon">&#9654;</span><span><strong>Generate judge scorecard</strong><small>31+ isolated test cases</small></span></button>
         </div>
         <div class="judge-result" id="judge-result" aria-live="polite"><span>Generate a persisted, reproducible buildathon scorecard.</span></div>
         <div class="evaluation-command panel">
-          <div><span class="panel-kicker">Mixed benchmark v3</span><h3>Eleven scenarios. One reproducible run.</h3><p>Seven adversarial cases test safety and concurrency. Four benign controls test whether valid financial work remains available.</p></div>
+          <div><span class="panel-kicker">Mixed benchmark v4</span><h3>Eleven scenarios. One reproducible run.</h3><p>Seven adversarial cases test safety across shared runtime instances. Four benign controls test whether valid financial work remains available.</p></div>
           <button class="run-button evaluation-run" id="run-evaluation-button" type="button"><span class="run-icon">&#9654;</span><span><strong>Run mixed benchmark</strong><small>Uses an isolated offline simulator</small></span></button>
         </div>
         <div class="evaluation-result" id="evaluation-result" aria-live="polite"><span>Run the benchmark to generate a persisted evidence report.</span></div>

@@ -134,9 +134,11 @@ over-refunds. The controls verify that independent payments, within-budget
 reservations, conservative delegation, and bounded refunds remain available.
 Each scenario runs in an isolated temporary SQLite ledger.
 
-The concurrent burst uses twelve worker threads against one runtime instance.
-It demonstrates atomic admission inside this prototype process; it does not
-claim multi-process or distributed transaction safety.
+The concurrent burst uses twelve independently locked runtime instances against
+one shared SQLite ledger. Final admission rechecks budget, invoice uniqueness,
+delegated spend, and correlated approvals inside a `BEGIN IMMEDIATE` write
+transaction. This demonstrates coordination among processes on one host sharing
+that database; it does not claim multi-host distributed consensus.
 
 `POST /api/v1/evaluations/run` persists a report containing per-scenario
 evidence and a canonical SHA-256 hash. `GET /api/v1/evaluations/{run_id}`

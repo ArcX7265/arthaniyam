@@ -27,12 +27,13 @@ financial invariant."
 - Seven known attacks are stopped while four benign controls remain available.
 - Generated cases just above and below two policy boundaries match an
   independent arithmetic oracle.
-- A simultaneous in-process burst cannot reserve beyond the shared budget.
+- Twelve independently locked runtime instances cannot reserve beyond their
+  shared SQLite budget.
 - Identical seeded runs produce identical canonical evidence hashes.
 
 ## What it does not prove
 
 - Safety outside the solver's tested action bound.
 - Accuracy on real production fraud distributions.
-- Multi-process or distributed transaction safety.
+- Multi-host distributed consensus or failover safety.
 - Authorization for live money movement.

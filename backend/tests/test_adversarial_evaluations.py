@@ -51,6 +51,7 @@ def test_mixed_suite_catches_attacks_without_blocking_benign_controls() -> None:
         if scenario["scenario_id"] == "concurrent-budget-burst"
     )
     assert burst["evidence"]["requests"] == 12
+    assert burst["evidence"]["runtime_instances"] == 12
     assert burst["evidence"]["arthaniyam_admitted_actions"] == 5
     assert burst["evidence"]["arthaniyam_denied_actions"] == 7
     assert burst["evidence"]["reserved_amount"] == 5_000_000

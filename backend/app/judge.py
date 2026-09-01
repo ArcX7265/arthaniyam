@@ -193,7 +193,7 @@ class JudgeScorecardService:
             limitations=[
                 "All money movement uses an offline simulator or Razorpay Test Mode; live keys are rejected.",
                 "The solver result is a bounded counterexample search, not an unbounded correctness proof.",
-                "Concurrency safety is demonstrated within one process, not across distributed replicas.",
+                "Shared-SQLite safety is tested across runtime instances; multi-host distributed consensus is outside this prototype.",
                 "Benchmark metrics describe synthetic test cases, not production fraud prevalence.",
             ],
         )

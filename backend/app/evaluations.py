@@ -307,12 +307,19 @@ class AdversarialEvaluationService:
             )
             for sequence in range(12)
         ]
+        guards = [
+            RuntimeGuard(SQLiteRuntimeRepository(guard.repository.database_path))
+            for _ in actions
+        ]
 
-        def evaluate(action: FinancialAction):
-            return guard.evaluate(RuntimeEvaluationRequest(policy=policy, action=action))
+        def evaluate(item: tuple[RuntimeGuard, FinancialAction]):
+            instance, action = item
+            return instance.evaluate(
+                RuntimeEvaluationRequest(policy=policy, action=action)
+            )
 
         with ThreadPoolExecutor(max_workers=12) as executor:
-            results = list(executor.map(evaluate, actions))
+            results = list(executor.map(evaluate, zip(guards, actions)))
         admitted = [
             result
             for result in results
@@ -332,6 +339,7 @@ class AdversarialEvaluationService:
             "CONCURRENT_BUDGET_CONSERVED" if invariant_holds else "BUDGET_RACE_DETECTED",
             {
                 "requests": len(actions),
+                "runtime_instances": len(guards),
                 "naive_admitted_amount": sum(action.amount for action in actions),
                 "arthaniyam_admitted_actions": len(admitted),
                 "arthaniyam_denied_actions": len(denied),

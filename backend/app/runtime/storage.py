@@ -65,6 +65,12 @@ class StoredDelegation:
     created_at: datetime
 
 
+@dataclass
+class AtomicReservation:
+    status: str
+    correlated_amount: int
+
+
 class SQLiteRuntimeRepository:
     """Small durable repository with one connection per operation.
 
@@ -706,17 +712,23 @@ class SQLiteRuntimeRepository:
         ]
 
     def register_policy(self, policy: PolicyDefinition) -> None:
-        existing = self.get_policy(policy.policy_id, policy.version)
-        if existing is not None and existing != policy:
-            raise ValueError(
-                "policy_id and version already refer to different policy contents"
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT policy_json FROM policies WHERE policy_id = ? AND version = ?",
+                (policy.policy_id, policy.version),
+            ).fetchone()
+            if row is not None:
+                existing = PolicyDefinition.model_validate_json(row["policy_json"])
+                if existing != policy:
+                    raise ValueError(
+                        "policy_id and version already refer to different policy contents"
+                    )
+                return
+            connection.execute(
+                "INSERT INTO policies(policy_id, version, policy_json) VALUES (?, ?, ?)",
+                (policy.policy_id, policy.version, policy.model_dump_json()),
             )
-        if existing is None:
-            with self._connect() as connection:
-                connection.execute(
-                    "INSERT INTO policies(policy_id, version, policy_json) VALUES (?, ?, ?)",
-                    (policy.policy_id, policy.version, policy.model_dump_json()),
-                )
 
     def get_policy(self, policy_id: str, version: int) -> PolicyDefinition | None:
         with self._connect() as connection:
@@ -754,6 +766,105 @@ class SQLiteRuntimeRepository:
                     created_at.isoformat(),
                 ),
             )
+
+    def reserve_entry_atomically(
+        self,
+        policy: PolicyDefinition,
+        action: FinancialAction,
+        created_at: datetime,
+        authority_limit: int,
+        approval_binding_hash: str,
+    ) -> AtomicReservation:
+        """Recheck shared invariants and reserve under one database write lock."""
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """SELECT action_json, status FROM ledger_entries
+                WHERE policy_id = ? AND version = ? AND action_id = ?""",
+                (policy.policy_id, policy.version, action.action_id),
+            ).fetchone()
+            if existing is not None:
+                if existing["action_json"] == action.model_dump_json() and existing[
+                    "status"
+                ] in {"reserved", "committed"}:
+                    return AtomicReservation("idempotent", action.amount)
+                return AtomicReservation("idempotency_conflict", action.amount)
+
+            rows = connection.execute(
+                """SELECT action_json, created_at FROM ledger_entries
+                WHERE policy_id = ? AND version = ?
+                AND status IN ('reserved', 'committed')""",
+                (policy.policy_id, policy.version),
+            ).fetchall()
+            active = [
+                (
+                    FinancialAction.model_validate_json(row["action_json"]),
+                    datetime.fromisoformat(row["created_at"]),
+                )
+                for row in rows
+            ]
+            if any(item.invoice_id == action.invoice_id for item, _ in active):
+                return AtomicReservation("duplicate_invoice", action.amount)
+            if sum(item.amount for item, _ in active) + action.amount > policy.budget.monthly_limit:
+                return AtomicReservation("budget_exceeded", action.amount)
+            agent_spend = sum(
+                item.amount for item, _ in active if item.agent_id == action.agent_id
+            )
+            if agent_spend + action.amount > authority_limit:
+                return AtomicReservation("authority_exceeded", action.amount)
+
+            cutoff = created_at.timestamp() - policy.correlation.window_hours * 3600
+            keys = {
+                "vendor": lambda item: item.vendor_id,
+                "purpose": lambda item: item.purpose,
+                "invoice": lambda item: item.invoice_id,
+            }
+            correlated_amount = action.amount + sum(
+                item.amount
+                for item, timestamp in active
+                if timestamp.timestamp() >= cutoff
+                and all(
+                    keys[field](item) == keys[field](action)
+                    for field in policy.correlation.group_by
+                )
+            )
+            if correlated_amount > policy.approval.required_above:
+                valid_approvers: set[str] = set()
+                if action.approval_ids:
+                    placeholders = ",".join("?" for _ in action.approval_ids)
+                    approvals = connection.execute(
+                        f"""SELECT DISTINCT approver_id FROM approval_grants
+                        WHERE approval_id IN ({placeholders}) AND binding_hash = ?
+                        AND status = 'active' AND expires_at > ?""",
+                        (
+                            *action.approval_ids,
+                            approval_binding_hash,
+                            created_at.isoformat(),
+                        ),
+                    ).fetchall()
+                    valid_approvers = {row["approver_id"] for row in approvals}
+                if len(valid_approvers) < policy.approval.approver_count:
+                    status = (
+                        "approval_invalid"
+                        if action.approval_ids
+                        else "approval_required"
+                    )
+                    return AtomicReservation(status, correlated_amount)
+
+            connection.execute(
+                """INSERT INTO ledger_entries(
+                    policy_id, version, action_id, action_json, status, created_at
+                ) VALUES (?, ?, ?, ?, 'reserved', ?)""",
+                (
+                    policy.policy_id,
+                    policy.version,
+                    action.action_id,
+                    action.model_dump_json(),
+                    created_at.isoformat(),
+                ),
+            )
+            return AtomicReservation("reserved", correlated_amount)
 
     def get_entry(
         self, policy_id: str, version: int, action_id: str
@@ -826,6 +937,7 @@ class SQLiteRuntimeRepository:
 
     def append_audit(self, policy_id: str, version: int, event: AuditEvent) -> None:
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             head = connection.execute(
                 """SELECT event_count, head_hash FROM audit_chain_heads
                 WHERE policy_id = ? AND version = ?""",
