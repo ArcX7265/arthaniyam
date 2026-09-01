@@ -5,6 +5,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.evaluations import AdversarialEvaluationReport, AdversarialEvaluationService
 from app.approvals.models import (
     ApprovalChallenge,
     ApprovalChallengeRequest,
@@ -79,6 +80,7 @@ policy_compiler = create_policy_compiler(
 )
 approval_service = ApprovalService(runtime_guard)
 refund_service = RefundService(runtime_guard)
+evaluation_service = AdversarialEvaluationService(runtime_guard.repository)
 
 
 @app.get("/", include_in_schema=False)
@@ -92,7 +94,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/v1/system/capabilities")
-def system_capabilities() -> dict[str, str | bool]:
+def system_capabilities() -> dict[str, str | bool | int]:
     return {
         "persistence": "sqlite",
         "payment_mode": settings.razorpay_mode,
@@ -101,9 +103,31 @@ def system_capabilities() -> dict[str, str | bool]:
         "demo_approvals_enabled": settings.razorpay_mode == "simulate",
         "demo_delegations_enabled": settings.razorpay_mode == "simulate",
         "demo_refunds_enabled": settings.razorpay_mode == "simulate",
+        "adversarial_scenarios": 6,
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }
+
+
+@app.post(
+    "/api/v1/evaluations/run",
+    response_model=AdversarialEvaluationReport,
+)
+def run_adversarial_evaluation() -> AdversarialEvaluationReport:
+    """Run the fixed offline attack suite in an isolated temporary ledger."""
+
+    return evaluation_service.run()
+
+
+@app.get(
+    "/api/v1/evaluations/{run_id}",
+    response_model=AdversarialEvaluationReport,
+)
+def get_adversarial_evaluation(run_id: str) -> AdversarialEvaluationReport:
+    try:
+        return evaluation_service.get(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="evaluation run was not found") from exc
 
 
 @app.post("/api/v1/policies/validate", response_model=PolicyDefinition)

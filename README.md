@@ -89,6 +89,20 @@ amounts, and an action without a verified capture cannot be refunded.
 only. It is disabled in Razorpay Test Mode until authenticated refund-operator
 authorization and a production-grade provider workflow are added.
 
+## Adversarial evaluation suite
+
+The dashboard can run a fixed six-scenario red-team benchmark covering split
+payments, budget exhaustion, duplicate invoices, approval spoofing, delegated
+authority multiplication, and cumulative over-refunds. Each scenario runs in
+an isolated temporary SQLite ledger and compares the decision of a stateless
+gateway with the stateful ArthaNiyam guard.
+
+`POST /api/v1/evaluations/run` persists a report containing per-scenario
+evidence and a canonical SHA-256 hash. `GET /api/v1/evaluations/{run_id}`
+retrieves the exact report. The displayed percentage is deliberately limited
+to attack recall on this known fixed suite; it is not presented as production
+accuracy, fraud recall, or a false-positive measurement.
+
 ```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload

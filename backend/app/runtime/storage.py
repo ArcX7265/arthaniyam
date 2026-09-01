@@ -3,9 +3,11 @@ from __future__ import annotations
 import sqlite3
 import os
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Iterator
 
 from app.policy.models import PolicyDefinition
 from app.runtime.models import (
@@ -67,12 +69,20 @@ class SQLiteRuntimeRepository:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA journal_mode = WAL")
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -197,6 +207,13 @@ class SQLiteRuntimeRepository:
                     result_json TEXT NOT NULL,
                     PRIMARY KEY (policy_id, version, refund_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS adversarial_evaluations (
+                    run_id TEXT PRIMARY KEY,
+                    report_json TEXT NOT NULL,
+                    evidence_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             columns = {
@@ -212,6 +229,7 @@ class SQLiteRuntimeRepository:
 
     def reset(self) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM adversarial_evaluations")
             connection.execute("DELETE FROM refunds")
             connection.execute("DELETE FROM authority_grants")
             connection.execute("DELETE FROM approval_grants")
@@ -224,6 +242,29 @@ class SQLiteRuntimeRepository:
             connection.execute("DELETE FROM evaluations")
             connection.execute("DELETE FROM ledger_entries")
             connection.execute("DELETE FROM policies")
+
+    def save_evaluation_suite(
+        self,
+        run_id: str,
+        report_json: str,
+        evidence_hash: str,
+        created_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO adversarial_evaluations(
+                    run_id, report_json, evidence_hash, created_at
+                ) VALUES (?, ?, ?, ?)""",
+                (run_id, report_json, evidence_hash, created_at.isoformat()),
+            )
+
+    def get_evaluation_suite(self, run_id: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT report_json FROM adversarial_evaluations WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return row["report_json"] if row else None
 
     def get_refund(
         self, policy_id: str, version: int, refund_id: str
