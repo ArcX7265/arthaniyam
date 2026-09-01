@@ -5,7 +5,7 @@ from typing import Protocol
 
 import httpx
 
-from app.payments.models import ProviderOrder
+from app.payments.models import ProviderOrder, ProviderPayment
 from app.runtime.models import FinancialAction
 from app.settings import Settings
 
@@ -16,6 +16,7 @@ class PaymentGatewayError(RuntimeError):
 
 class PaymentGateway(Protocol):
     def create_order(self, action: FinancialAction) -> ProviderOrder: ...
+    def fetch_payment(self, payment_id: str) -> ProviderPayment: ...
 
 
 def receipt_for(action_id: str) -> str:
@@ -37,6 +38,9 @@ class SimulatedRazorpayGateway:
             receipt=receipt_for(action.action_id),
             status="created",
         )
+
+    def fetch_payment(self, payment_id: str) -> ProviderPayment:
+        raise PaymentGatewayError("simulated payments are confirmed locally")
 
 
 class RazorpayTestGateway:
@@ -83,6 +87,27 @@ class RazorpayTestGateway:
             amount=body["amount"],
             currency=body["currency"],
             receipt=body.get("receipt") or payload["receipt"],
+            status=body["status"],
+        )
+
+    def fetch_payment(self, payment_id: str) -> ProviderPayment:
+        try:
+            response = httpx.get(
+                f"https://api.razorpay.com/v1/payments/{payment_id}",
+                auth=(self.key_id, self.key_secret),
+                timeout=10,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise PaymentGatewayError(
+                f"Razorpay Test Mode payment lookup failed: {exc}"
+            ) from exc
+        body = response.json()
+        return ProviderPayment(
+            payment_id=body["id"],
+            order_id=body["order_id"],
+            amount=body["amount"],
+            currency=body["currency"],
             status=body["status"],
         )
 

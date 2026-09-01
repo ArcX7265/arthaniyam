@@ -31,6 +31,14 @@ class StoredEvaluation:
     response: RuntimeComparison
 
 
+@dataclass
+class StoredProof:
+    request_json: str
+    result_json: str
+    evidence_hash: str
+    created_at: datetime
+
+
 class SQLiteRuntimeRepository:
     """Small durable repository with one connection per operation.
 
@@ -98,21 +106,118 @@ class SQLiteRuntimeRepository:
                     policy_id TEXT NOT NULL,
                     version INTEGER NOT NULL,
                     action_id TEXT NOT NULL,
+                    provider_order_id TEXT,
                     result_json TEXT NOT NULL,
                     PRIMARY KEY (policy_id, version, action_id),
                     FOREIGN KEY (policy_id, version, action_id)
                         REFERENCES ledger_entries(policy_id, version, action_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS payment_confirmations (
+                    policy_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    action_id TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    PRIMARY KEY (policy_id, version, action_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS webhook_events (
+                    event_id TEXT PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    processed_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS proof_runs (
+                    proof_run_id TEXT PRIMARY KEY,
+                    request_json TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    evidence_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(provider_executions)"
+                ).fetchall()
+            }
+            if "provider_order_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE provider_executions ADD COLUMN provider_order_id TEXT"
+                )
 
     def reset(self) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM proof_runs")
+            connection.execute("DELETE FROM webhook_events")
+            connection.execute("DELETE FROM payment_confirmations")
             connection.execute("DELETE FROM provider_executions")
             connection.execute("DELETE FROM audit_events")
             connection.execute("DELETE FROM evaluations")
             connection.execute("DELETE FROM ledger_entries")
             connection.execute("DELETE FROM policies")
+
+    def save_proof(
+        self,
+        proof_run_id: str,
+        request_json: str,
+        result_json: str,
+        evidence_hash: str,
+        created_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO proof_runs(
+                    proof_run_id, request_json, result_json, evidence_hash, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(proof_run_id) DO NOTHING""",
+                (
+                    proof_run_id,
+                    request_json,
+                    result_json,
+                    evidence_hash,
+                    created_at.isoformat(),
+                ),
+            )
+
+    def get_proof(self, proof_run_id: str) -> StoredProof | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT request_json, result_json, evidence_hash, created_at
+                FROM proof_runs WHERE proof_run_id = ?""",
+                (proof_run_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return StoredProof(
+            request_json=row["request_json"],
+            result_json=row["result_json"],
+            evidence_hash=row["evidence_hash"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    def list_proofs(self, limit: int) -> list[tuple[str, StoredProof]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT proof_run_id, request_json, result_json,
+                evidence_hash, created_at FROM proof_runs
+                ORDER BY created_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [
+            (
+                row["proof_run_id"],
+                StoredProof(
+                    request_json=row["request_json"],
+                    result_json=row["result_json"],
+                    evidence_hash=row["evidence_hash"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                ),
+            )
+            for row in rows
+        ]
 
     def register_policy(self, policy: PolicyDefinition) -> None:
         existing = self.get_policy(policy.policy_id, policy.version)
@@ -272,16 +377,68 @@ class SQLiteRuntimeRepository:
         policy_id: str,
         version: int,
         action_id: str,
+        provider_order_id: str,
         result_json: str,
     ) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO provider_executions(
-                    policy_id, version, action_id, result_json
-                ) VALUES (?, ?, ?, ?)
+                    policy_id, version, action_id, provider_order_id, result_json
+                ) VALUES (?, ?, ?, ?, ?)
                 """,
+                (policy_id, version, action_id, provider_order_id, result_json),
+            )
+
+    def find_execution_by_order(self, order_id: str) -> tuple[str, int, str, str] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT policy_id, version, action_id, result_json
+                FROM provider_executions WHERE provider_order_id = ?
+                """,
+                (order_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return row["policy_id"], row["version"], row["action_id"], row["result_json"]
+
+    def get_confirmation(self, policy_id: str, version: int, action_id: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT result_json FROM payment_confirmations
+                WHERE policy_id = ? AND version = ? AND action_id = ?""",
+                (policy_id, version, action_id),
+            ).fetchone()
+        return row["result_json"] if row else None
+
+    def save_confirmation(
+        self, policy_id: str, version: int, action_id: str, result_json: str
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO payment_confirmations(
+                policy_id, version, action_id, result_json
+                ) VALUES (?, ?, ?, ?)""",
                 (policy_id, version, action_id, result_json),
+            )
+
+    def has_webhook(self, event_id: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM webhook_events WHERE event_id = ?", (event_id,)
+            ).fetchone()
+        return row is not None
+
+    def save_webhook(
+        self, event_id: str, event_type: str, payload_hash: str, processed_at: datetime
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO webhook_events(
+                event_id, event_type, payload_hash, processed_at
+                ) VALUES (?, ?, ?, ?)""",
+                (event_id, event_type, payload_hash, processed_at.isoformat()),
             )
 
     @staticmethod

@@ -40,6 +40,7 @@ class VerificationResult(StrictModel):
     status: Literal["counterexample_found", "no_counterexample_within_bound"]
     checked_bound: int
     proof_run_id: str
+    evidence_hash: str | None = None
     counterexample: Counterexample | None = None
     limitation: str
 

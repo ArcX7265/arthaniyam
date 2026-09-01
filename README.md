@@ -30,6 +30,12 @@ commitment requires approval. The response contains the concrete actions, both
 decisions, the violated invariant, an honest bound statement, and a stable
 replay ID derived from the complete policy.
 
+Every verification run is persisted as a proof record with a canonical SHA-256
+evidence hash. `GET /api/v1/proofs/{proof_run_id}` retrieves its exact input and
+result, while `POST /api/v1/proofs/{proof_run_id}/replay` reruns the solver and
+checks both stored-record integrity and deterministic replay. Policy Studio
+exposes this through a one-click **Replay proof** control.
+
 ```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
@@ -57,3 +63,29 @@ connect a Razorpay Test Mode account, copy `.env.example` to `.env`, set
 `RAZORPAY_MODE=test`, and provide test-only credentials. The adapter rejects
 live keys by design. A policy-approved active reservation is required before
 `POST /api/v1/executions/orders` will create an order.
+
+## Payment lifecycle
+
+An approved action is reserved first; creating a provider order does not count
+as payment. The reservation becomes committed only after a trusted payment
+confirmation:
+
+1. `POST /api/v1/executions/orders` creates an idempotent simulator or Razorpay
+   Test Mode order.
+2. In Test Mode, the dashboard opens Razorpay Checkout. The browser sends the
+   returned payment ID, order ID, and signature to
+   `POST /api/v1/executions/confirm`.
+3. The server verifies the HMAC against its stored order ID, fetches the payment
+   from Razorpay, checks amount and currency, and commits only a captured
+   payment. The key secret is never sent to the browser.
+4. `POST /api/v1/webhooks/razorpay` provides the asynchronous path. It verifies
+   the signature against the unmodified request body, deduplicates
+   `X-Razorpay-Event-Id`, and safely handles repeated or out-of-order delivery.
+
+For webhooks, configure a separate `RAZORPAY_WEBHOOK_SECRET` and point the
+Razorpay Test Mode webhook URL at `/api/v1/webhooks/razorpay`. The simulator
+needs no credentials and automatically produces a deterministic successful
+confirmation for the dashboard demo.
+
+This prototype never enables live money movement. Test credentials beginning
+with `rzp_test_` are accepted; live credentials are rejected.

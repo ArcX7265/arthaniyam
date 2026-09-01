@@ -17,6 +17,15 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_capabilities_keep_real_money_disabled() -> None:
+    response = client.get("/api/v1/system/capabilities")
+
+    assert response.status_code == 200
+    assert response.json()["real_money_enabled"] is False
+    assert response.json()["live_keys_accepted"] is False
+    assert "webhook_configured" in response.json()
+
+
 def test_dashboard_is_served_from_root() -> None:
     response = client.get("/")
 
@@ -33,6 +42,8 @@ def test_dashboard_assets_are_available() -> None:
     assert "--acid" in stylesheet.text
     assert script.status_code == 200
     assert "runAttack" in script.text
+    assert "confirmWithRazorpay" in script.text
+    assert "replayProof" in script.text
 
 
 def test_policy_schema_rejects_transaction_limit_above_budget() -> None:

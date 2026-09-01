@@ -1,13 +1,21 @@
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.payments.gateway import PaymentGatewayError, create_payment_gateway
-from app.payments.models import OrderExecutionRequest, OrderExecutionResult
+from app.payments.models import (
+    OrderExecutionRequest,
+    OrderExecutionResult,
+    PaymentConfirmationRequest,
+    PaymentConfirmationResult,
+    WebhookResult,
+)
 from app.payments.service import PaymentExecutionService
+from app.payments.webhooks import RazorpayWebhookService, WebhookVerificationError
 from app.policy.models import PolicyDefinition
+from app.policy.proofs import ProofRecord, ProofReplayResult, ProofService
 from app.policy.verifier import (
     VerificationRequest,
     VerificationResult,
@@ -38,8 +46,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = PROJECT_ROOT / "frontend"
 app.mount("/assets", StaticFiles(directory=FRONTEND_ROOT), name="assets")
 payment_execution_service = PaymentExecutionService(
-    runtime_guard, create_payment_gateway(settings)
+    runtime_guard,
+    create_payment_gateway(settings),
+    settings.razorpay_key_secret,
+    settings.razorpay_key_id,
 )
+webhook_service = (
+    RazorpayWebhookService(runtime_guard, settings.razorpay_webhook_secret)
+    if settings.razorpay_webhook_secret
+    else None
+)
+proof_service = ProofService(runtime_guard.repository)
 
 
 @app.get("/", include_in_schema=False)
@@ -57,6 +74,7 @@ def system_capabilities() -> dict[str, str | bool]:
     return {
         "persistence": "sqlite",
         "payment_mode": settings.razorpay_mode,
+        "webhook_configured": webhook_service is not None,
         "real_money_enabled": False,
         "live_keys_accepted": False,
     }
@@ -73,7 +91,28 @@ def validate_policy(policy: PolicyDefinition) -> PolicyDefinition:
 def verify_policy(request: VerificationRequest) -> VerificationResult:
     """Run a bounded search for cross-request policy violations."""
 
-    return verify_correlated_payments(request)
+    return proof_service.record(request, verify_correlated_payments(request))
+
+
+@app.get("/api/v1/proofs", response_model=list[ProofRecord])
+def list_proofs(limit: int = Query(default=20, ge=1, le=100)) -> list[ProofRecord]:
+    return proof_service.list(limit)
+
+
+@app.get("/api/v1/proofs/{proof_run_id}", response_model=ProofRecord)
+def get_proof(proof_run_id: str) -> ProofRecord:
+    try:
+        return proof_service.get(proof_run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="proof run was not found") from exc
+
+
+@app.post("/api/v1/proofs/{proof_run_id}/replay", response_model=ProofReplayResult)
+def replay_proof(proof_run_id: str) -> ProofReplayResult:
+    try:
+        return proof_service.replay(proof_run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="proof run was not found") from exc
 
 
 @app.post("/api/v1/runtime/evaluate", response_model=RuntimeComparison)
@@ -146,3 +185,39 @@ def create_provider_order(request: OrderExecutionRequest) -> OrderExecutionResul
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PaymentGatewayError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/executions/confirm",
+    response_model=PaymentConfirmationResult,
+)
+def confirm_provider_payment(
+    request: PaymentConfirmationRequest,
+) -> PaymentConfirmationResult:
+    try:
+        return payment_execution_service.confirm_payment(request)
+    except RuntimeActionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PaymentGatewayError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/webhooks/razorpay", response_model=WebhookResult)
+async def receive_razorpay_webhook(
+    request: Request,
+    x_razorpay_signature: str = Header(...),
+    x_razorpay_event_id: str = Header(...),
+) -> WebhookResult:
+    if webhook_service is None:
+        raise HTTPException(status_code=503, detail="Razorpay webhook secret is not configured")
+    raw_body = await request.body()
+    try:
+        return webhook_service.process(
+            raw_body, x_razorpay_signature, x_razorpay_event_id
+        )
+    except WebhookVerificationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except RuntimeTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
