@@ -34,6 +34,19 @@ def test_dashboard_is_served_from_root() -> None:
     assert "run-attack-button" in response.text
 
 
+def test_dashboard_preserves_utf8_and_keyboard_landmarks() -> None:
+    response = client.get("/")
+
+    assert "ArthaNiyam — Financial policy control plane" in response.text
+    assert "अ" in response.text
+    assert "₹9,000" in response.text
+    assert "Candidate approval threshold" in response.text
+    assert "â" not in response.text
+    assert 'class="skip-link"' in response.text
+    assert 'id="main-content"' in response.text
+    assert 'aria-controls="guided-result"' in response.text
+
+
 def test_dashboard_assets_are_available() -> None:
     stylesheet = client.get("/assets/styles.css")
     script = client.get("/assets/app.js")
@@ -52,6 +65,7 @@ def test_dashboard_assets_are_available() -> None:
     assert "runJudgeScorecard" in script.text
     assert "runGuidedDemo" in script.text
     assert "downloadJudgeScorecard" in script.text
+    assert 'setAttribute("aria-busy"' in script.text
     assert "runBoundaryCampaign" in script.text
     assert "runPolicyRollout" in script.text
     assert "runAuditIntegrity" in script.text

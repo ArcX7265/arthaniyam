@@ -8,7 +8,8 @@
     <link rel="stylesheet" href="/assets/styles.css" />
     <script src="/assets/app.js" defer></script>
   </head>
-  <body>
+  <body id="top">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
     <header class="topbar">
       <a class="brand" href="#top" aria-label="ArthaNiyam home">
@@ -18,14 +19,14 @@
       <div class="system-status" id="system-status" role="status"><span class="status-dot"></span><span>Checking runtime</span></div>
     </header>
 
-    <main id="top">
+    <main id="main-content" tabindex="-1">
       <section class="hero section-shell">
         <div class="eyebrow"><span>Open track prototype</span> / Razorpay AI Buildathon</div>
         <div class="hero-grid">
           <div>
             <h1>Verify intent.<br /><em>Then</em> move money.</h1>
             <p class="hero-copy">ArthaNiyam sees the financial outcome that isolated API checks miss. It models policy, searches for unsafe action sequences, and guards every live commitment with shared state.</p>
-            <div class="hero-actions"><button class="button button-primary" id="run-guided-demo" type="button">Start 90-second demo</button><a class="button button-secondary" href="/docs">Explore API</a></div>
+            <div class="hero-actions"><button class="button button-primary" id="run-guided-demo" type="button" aria-controls="guided-result">Start 90-second demo</button><a class="button button-secondary" href="/docs">Explore API</a></div>
           </div>
           <aside class="hero-proof" aria-label="Core invariant">
             <div class="proof-label">Invariant 03</div>
@@ -45,7 +46,7 @@
 
       <section class="guided-section section-shell" id="guided-demo">
         <div class="section-heading"><div><div class="eyebrow">Guided proof story</div><h2>See the difference in one run</h2></div><p>The demo uses isolated ledgers and produces a persisted evidence record.</p></div>
-        <div class="guided-result panel" id="guided-result" aria-live="polite"><div class="guided-empty"><span class="panel-kicker">Ready</span><strong>Start from the hero to run the complete judge narrative.</strong><small>Two payments · two authorization models · one independent scorecard</small></div></div>
+        <div class="guided-result panel" id="guided-result" aria-live="polite" tabindex="-1"><div class="guided-empty"><span class="panel-kicker">Ready</span><strong>Start from the hero to run the complete judge narrative.</strong><small>Two payments · two authorization models · one independent scorecard</small></div></div>
       </section>
 
       <section class="workspace section-shell" id="policy-studio">
@@ -69,7 +70,7 @@
         </div>
         <div class="rollout-panel panel">
           <div><span class="panel-kicker">Counterfactual shadow mode</span><h3>Test a policy change before deployment.</h3><p>Replay the same historical purchases in two isolated worlds and expose operational regressions before the candidate policy becomes active.</p></div>
-          <label><span>Candidate approval threshold</span><span class="input-wrap"><b>â‚¹</b><input id="candidate-threshold" type="number" min="0" value="8000" /></span></label>
+          <label><span>Candidate approval threshold</span><span class="input-wrap"><b>₹</b><input id="candidate-threshold" type="number" min="0" value="8000" /></span></label>
           <button class="run-button rollout-run" id="run-rollout-button" type="button"><span class="run-icon">&#9654;</span><span><strong>Simulate rollout</strong><small>Current policy vs candidate v2</small></span></button>
         </div>
         <div class="rollout-result" id="rollout-result" aria-live="polite"><span>Simulate the candidate policy against a representative historical action stream.</span></div>
