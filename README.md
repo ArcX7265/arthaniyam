@@ -2,6 +2,34 @@
 
 ArthaNiyam is a buildathon prototype for verifying financial policies before autonomous systems are allowed to move money.
 
+## Fastest demo setup
+
+On Windows PowerShell, the launcher creates the virtual environment on first
+use, installs the API, forces the safe offline simulator, and starts the full
+dashboard:
+
+```powershell
+.\scripts\start-demo.ps1
+```
+
+Then open `http://127.0.0.1:8000` and click **Start 90-second demo**.
+
+The containerized path provides the same simulator-only experience with a
+persistent SQLite volume and built-in health check:
+
+```powershell
+docker compose up --build
+```
+
+Run every backend test plus frontend JavaScript validation locally with:
+
+```powershell
+.\scripts\verify-project.ps1
+```
+
+GitHub Actions performs the same verification and builds the judge container
+on every pull request and push to `main`.
+
 The MVP asks: can several individually valid agent actions combine into an invalid financial outcome?
 
 The system will translate a constrained natural-language policy into a typed policy, search for counterexamples with a solver, enforce the verified policy at runtime, and execute permitted actions through Razorpay test mode.
