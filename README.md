@@ -30,6 +30,14 @@ Run every backend test plus frontend JavaScript validation locally with:
 GitHub Actions performs the same verification and builds the judge container
 on every pull request and push to `main`.
 
+## Submission package
+
+- [Architecture and trust boundaries](docs/architecture.md)
+- [Judge-facing submission narrative](docs/submission.md)
+- [90-second demo script](docs/judge-demo.md)
+- [Judge Q&A and technical defense](docs/judge-qa.md)
+- [Final submission checklist](docs/submission-checklist.md)
+
 The MVP asks: can several individually valid agent actions combine into an invalid financial outcome?
 
 The system will translate a constrained natural-language policy into a typed policy, search for counterexamples with a solver, enforce the verified policy at runtime, and execute permitted actions through Razorpay test mode.
