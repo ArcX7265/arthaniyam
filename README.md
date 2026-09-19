@@ -1,276 +1,148 @@
 # ArthaNiyam
 
-ArthaNiyam is a buildathon prototype for verifying financial policies before autonomous systems are allowed to move money.
+**An autonomous financial-control teammate for merchant support.**
 
-## Fastest demo setup
+ArthaNiyam checks financial actions against shared payment history and merchant policy. It identifies unsafe combinations of otherwise valid requests, requires human approval where necessary, and records evidence for each decision.
 
-On Windows PowerShell, the launcher creates the virtual environment on first
-use, installs the API, forces the safe offline simulator, and starts the full
-dashboard:
+The Paytm hackathon direction extends this working policy engine into a teammate that investigates merchant refund-support requests, proposes a resolution, obtains the required authority, executes through a simulator, and follows the request to a verified outcome.
+
+**Intended submission:** Paytm Build for India AI Hackathon, Mumbai — Autonomous AI Teammates.
+
+> Status: the policy engine and technical demo work today. The autonomous support workflow described below is planned. Payments use an offline simulator or the existing Razorpay Test Mode adapter; there is no Paytm integration yet. ArthaNiyam is the standalone submission and does not depend on Resora.
+
+## The problem
+
+A support or purchasing agent can make an individually valid request that becomes unsafe when combined with earlier actions. Two INR 9,000 purchases can cross an INR 10,000 approval threshold. Two refund requests can each fit the original capture while exceeding it together. Concurrent agents can compete for the same remaining budget.
+
+ArthaNiyam evaluates actions against shared commitments, captures, refunds, approvals, and delegated authority. The comparison gateway in its demo is an intentionally simplified stateless baseline; it is not a representation of Paytm's internal controls.
+
+## Hackathon workflow
+
+The first complete teammate workflow will focus on merchant refund support:
+
+1. A merchant submits a request such as “Check this customer's refund and process the eligible balance.”
+2. The AI retrieves the associated order, capture, prior refunds, and applicable policy, and asks for clarification if the match is uncertain.
+3. It proposes an action with evidence references. The deterministic policy engine decides whether to allow it, require approval, or deny it.
+4. The teammate executes an allowed action, waits for a bound human approval, or escalates a denied or ambiguous request.
+5. It verifies provider completion, updates the support request, and attaches the action and audit evidence.
+
+The original split-payment demonstration remains available as a technical example. A customer-service workflow provides a closer fit to the supplied track description than policy inspection alone. The exact event rules, reuse eligibility, and integration requirements still need confirmation from the organisers.
+
+## Current capabilities and remaining work
+
+### Features to adapt from Resora
+
+Resora provides useful reference implementations for complaint intake, a searchable case inbox, linked order/payment/refund evidence, approval invalidation when records change, human takeover, and persistent simulated follow-ups. Adapt these behaviors into ArthaNiyam's backend and minimal interface; they are not yet ported.
+
+Start with duplicate-payment complaints and tracking existing refunds. Add payment-after-cancellation and delayed duplicate-payment cases once the first workflow is complete. Keep ArthaNiyam's policy engine as the financial authorization boundary. Resora's tests and scenario fixtures can guide new Python tests, while its Next.js runtime and workspace database remain separate.
+
+### Capability status
+
+| Capability                  | Current status                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Policy authoring            | Constrained offline parser; optional model-based structured extraction                                              |
+| Symbolic verification       | Z3 search for bounded split-payment counterexamples                                                                 |
+| Runtime enforcement         | Shared budget reservations, invoice checks, correlation, and action replay protection                               |
+| Approvals                   | Expiring simulator approvals bound to policy version and action contents                                            |
+| Delegation                  | Simulator authority graph with conservation checks                                                                  |
+| Refunds                     | Sequential cumulative-refund and replay checks in the simulator; cross-instance atomic admission still needs fixing |
+| Provider execution          | Offline simulator and Razorpay Test Mode adapter; live keys rejected                                                |
+| Evidence                    | Persisted proof replay, audit hash chains, portable exports, and standalone verifiers                               |
+| Evaluation                  | Fixed adversarial scenarios, benign controls, seeded boundary campaigns, and judge scorecards                       |
+| Reproducibility             | Windows launch/verification scripts, Docker Compose, and GitHub Actions configuration                               |
+| Autonomous support teammate | Planned: intake, evidence tools, bounded model loop, durable follow-up, and verified closure                        |
+| Paytm integration           | Not implemented; depends on permitted product APIs and test access                                                  |
+
+The current AI path extracts policy fields. Generated investigations and explanations are part of the planned teammate work, not an existing capability. Financial authorization remains deterministic in both modes.
+
+## Run locally
+
+Requires Python 3.11+; Node.js is used by the verification script for frontend syntax checks.
+
+From the repository root in Windows PowerShell:
 
 ```powershell
 .\scripts\start-demo.ps1
 ```
 
-Then open `http://127.0.0.1:8000` and click **Start 90-second demo**.
-
-The containerized path provides the same simulator-only experience with a
-persistent SQLite volume and built-in health check:
+The launcher creates a virtual environment on first use, installs dependencies, and forces the offline compiler and payment simulator. If an environment already exists and dependencies have changed, update it with:
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -e './backend[dev]'
+```
+
+Open the [dashboard](http://127.0.0.1:8000) or [API documentation](http://127.0.0.1:8000/docs). Click **Start 90-second demo** to run the existing split-payment and scorecard demonstration. It does not yet run an autonomous customer-support investigation.
+
+Alternatively, with Docker available:
+
+```sh
 docker compose up --build
 ```
 
-Run every backend test plus frontend JavaScript validation locally with:
+Compose uses a persistent SQLite volume and exposes the simulator on loopback. The local default database is `backend/arthaniyam.sqlite3`. To choose a different path, set `ARTHANIYAM_DATABASE_PATH` in the process environment before starting the server.
+
+## Optional policy AI and provider modes
+
+The repository-root `.env.example` documents the existing settings. For model-based policy extraction, configure a root `.env` with `POLICY_COMPILER_MODE=openai`, `OPENAI_API_KEY`, and an accessible `OPENAI_MODEL`. Keep `RAZORPAY_MODE=simulate` for the offline payment demo.
+
+Start the API directly when using this mode, because the demo launcher overrides compiler mode:
+
+```powershell
+$env:POLICY_COMPILER_MODE = 'openai'
+$env:RAZORPAY_MODE = 'simulate'
+Set-Location backend
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Keep credentials out of Git. A real-model run must be validated separately before claiming it in the submission.
+
+The optional existing payment adapter uses Razorpay test credentials. Its approvals, delegation administration, and refund-demo endpoints are disabled outside simulator mode. Preserve accurate provider labels; changing event branding does not turn this adapter into a Paytm integration.
+
+## Architecture
+
+| Component                        | Responsibility                                           |
+| -------------------------------- | -------------------------------------------------------- |
+| FastAPI / Pydantic               | Typed API, validation, policy contracts                  |
+| Policy compiler                  | Extract a reviewable candidate from constrained language |
+| Z3 verifier                      | Search the model for a bounded counterexample            |
+| Runtime guard / SQLite WAL       | Apply rules and atomically admit spending reservations   |
+| Approval and delegation services | Represent bounded human permission and agent authority   |
+| Payment adapter                  | Simulator or verified test-provider execution            |
+| Evidence services                | Persist, hash, export, and replay records                |
+| HTML / CSS / JavaScript          | Dashboard, existing labs, and future support workspace   |
+
+The planned teammate will call these services through scoped tools. It will not directly write ledger state, select its own permissions, or override a denial. See [implementation.md](implementation.md) for the build sequence and acceptance criteria.
+
+## Verify the project
 
 ```powershell
 .\scripts\verify-project.ps1
 ```
 
-GitHub Actions performs the same verification and builds the judge container
-on every pull request and push to `main`.
+The last local verification before this documentation update passed 71 backend tests and frontend JavaScript syntax validation. That result covers the current prototype, not the planned support workflow or live integrations.
 
-## Submission package
+The included fixed benchmark has seven attack scenarios and four benign controls. The guided scorecard combines those with 20 generated boundary cases. Report results with their fixture counts; synthetic measurements do not establish production fraud accuracy or customer impact.
 
-- [Architecture and trust boundaries](docs/architecture.md)
-- [Judge-facing submission narrative](docs/submission.md)
-- [90-second demo script](docs/judge-demo.md)
-- [Judge Q&A and technical defense](docs/judge-qa.md)
-- [Final submission checklist](docs/submission-checklist.md)
+Downloaded evidence can be checked independently:
 
-The MVP asks: can several individually valid agent actions combine into an invalid financial outcome?
-
-The system will translate a constrained natural-language policy into a typed policy, search for counterexamples with a solver, enforce the verified policy at runtime, and execute permitted actions through Razorpay test mode.
-
-## Planned applications
-
-- `backend/` - FastAPI API, policy schema, model checker, runtime guard, ledger, and Razorpay adapter.
-- `frontend/` - Policy Studio, Attack Lab, Gateway Comparison, Payment Console, and Proof Explorer.
-- `docs/` - MVP specification, invariants, threat model, and demo script.
-
-## MVP invariants
-
-1. Delegated authority cannot multiply.
-2. Reserved plus committed spending cannot exceed the budget.
-3. Correlated payments cannot bypass an approval threshold.
-4. An invoice cannot be successfully paid twice.
-5. Transfers and refunds cannot exceed captured money.
-
-See `docs/mvp-spec.md` for the implementation boundary.
-
-## Current runnable slice
-
-The home page now begins with a **90-second guided demo**. One click evaluates
-the two-payment split attack in an isolated ledger, compares the local gateway
-with ArthaNiyam on both requests, runs the complete judge scorecard, and
-persists a canonical narrative record. The same flow is available at `POST
-/api/v1/demo/guided-run`, with retrieval through `GET
-/api/v1/demo/guided-runs/{demo_id}`.
-
-The first vertical slice uses Z3 to search for a correlated split-payment
-sequence that a request-by-request gateway would allow even though the combined
-commitment requires approval. The response contains the concrete actions, both
-decisions, the violated invariant, an honest bound statement, and a stable
-replay ID derived from the complete policy.
-
-Every verification run is persisted as a proof record with a canonical SHA-256
-evidence hash. `GET /api/v1/proofs/{proof_run_id}` retrieves its exact input and
-result, while `POST /api/v1/proofs/{proof_run_id}/replay` reruns the solver and
-checks both stored-record integrity and deterministic replay. Policy Studio
-exposes this through a one-click **Replay proof** control.
-
-## Policy compiler
-
-Policy Studio accepts constrained finance rules in plain language through
-`POST /api/v1/policies/compile`. Compilation is deliberately separated from
-enforcement: the compiler creates a typed candidate, source mappings,
-assumptions, warnings, and blocking ambiguities. Only a schema-valid candidate
-can be sent to the deterministic verifier or runtime guard.
-
-The safe default `POLICY_COMPILER_MODE=reference` is a transparent offline
-compiler for the demo grammar. Set `POLICY_COMPILER_MODE=openai`,
-`OPENAI_API_KEY`, and `OPENAI_MODEL` to use strict structured extraction through
-the OpenAI Responses API. Model output is still validated by the same typed
-policy boundary and never directly authorizes a payment.
-
-## Counterfactual policy rollout
-
-Shadow mode replays one historical action stream against the current and a
-candidate policy in two isolated ledgers. It reports unchanged, escalated, and
-relaxed decisions; new reviews and denials; and the final budget position in
-each counterfactual world before the candidate policy is deployed.
-
-`POST /api/v1/policies/impact/simulate` accepts 1–200 actions and persists a
-canonical evidence report retrievable from
-`GET /api/v1/policies/impact/{simulation_id}`. No action is sent to a payment
-provider during this simulation.
-
-## Bounded approval demo
-
-When correlated spend requires review, the offline simulator creates an
-expiring challenge bound to the exact policy version, action, amount, vendor,
-purpose, category, and invoice. A grant is accepted only for that binding,
-requires distinct approvers according to policy, and is consumed after the
-reservation succeeds. Arbitrary approval strings, expired grants, cross-action
-reuse, and duplicate approver votes do not bypass the guard.
-
-The interactive endpoints live under `/api/v1/demo/approvals/*` and are
-hard-disabled whenever `RAZORPAY_MODE=test`. They intentionally simulate the
-human step for the buildathon walkthrough; a real deployment must replace them
-with authenticated approver identity and authorization.
-
-## Conserved delegation authority
-
-The Delegation Lab models authority as a stateful graph rather than an
-independent flag on each request. It rejects sibling grants whose total exceeds
-their parent's authority, cycles, multiple active parents, expired grants, and
-paths beyond the configured depth. Delegated authority also constrains the
-child's combined committed spend and active reservations, while outbound grants
-reduce the parent's remaining spending authority.
-
-The interactive `/api/v1/demo/delegations/evaluate` endpoint is restricted to
-the offline simulator. Razorpay Test Mode keeps authority administration
-disabled until an authenticated administrative integration is provided.
-
-## Captured-funds conservation
-
-The Refund Lab keeps a cumulative, idempotent ledger for every verified capture.
-A stateless check may allow two refunds because each is smaller than the
-original payment; ArthaNiyam denies any request that would make successful
-refunds exceed captured funds. Refund IDs cannot be replayed with changed
-amounts, and an action without a verified capture cannot be refunded.
-
-`POST /api/v1/demo/refunds/evaluate` executes deterministic simulator refunds
-only. It is disabled in Razorpay Test Mode until authenticated refund-operator
-authorization and a production-grade provider workflow are added.
-
-## Adversarial evaluation suite
-
-### One-click judge scorecard
-
-The dashboard's **Buildathon judge mode** runs the symbolic split-payment
-counterexample, the eleven-scenario mixed benchmark, and a seeded boundary
-campaign as one evidence path. It reports the worst observed attack recall and
-false-positive rate, verifies the concurrent budget invariant, persists the
-complete result, and displays the prototype's trust boundaries beside the
-metrics.
-
-`POST /api/v1/evaluations/judge-scorecards/run` generates the scorecard and
-`GET /api/v1/evaluations/judge-scorecards/{scorecard_id}` retrieves it. The
-top-level SHA-256 hash commits to all three constituent evidence hashes and the
-six readiness checks, while excluding timestamps and random report IDs so an
-identical seeded run is reproducible.
-
-The scorecard can be downloaded as an `arthaniyam.judge.v1` portable bundle.
-Its manifest and internal scorecard hash can be verified without the API or any
-third-party packages:
-
-```powershell
-python scripts/verify_scorecard.py path\to\arthaniyam-judge-scorecard.json
+```sh
+python scripts/verify_evidence.py path/to/arthaniyam-evidence.json
+python scripts/verify_scorecard.py path/to/arthaniyam-judge-scorecard.json
 ```
 
-The dashboard can run a fixed mixed benchmark with seven attacks and four benign
-controls. The attacks cover split payments, budget exhaustion, a concurrent
-budget burst, duplicate invoices, approval spoofing, delegated authority
-multiplication, and cumulative
-over-refunds. The controls verify that independent payments, within-budget
-reservations, conservative delegation, and bounded refunds remain available.
-Each scenario runs in an isolated temporary SQLite ledger.
+Hashes help detect changes against a trusted record. They do not independently prove that the inputs were true, that the operator was authorized, or that the service generating the record was trustworthy.
 
-The concurrent burst uses twelve independently locked runtime instances against
-one shared SQLite ledger. Final admission rechecks budget, invoice uniqueness,
-delegated spend, and correlated approvals inside a `BEGIN IMMEDIATE` write
-transaction. This demonstrates coordination among processes on one host sharing
-that database; it does not claim multi-host distributed consensus.
+## Next delivery milestones
 
-`POST /api/v1/evaluations/run` persists a report containing per-scenario
-evidence and a canonical SHA-256 hash. `GET /api/v1/evaluations/{run_id}`
-retrieves the exact report. The dashboard reports attack recall, false-positive
-rate on the benign controls, and total fixed-suite accuracy separately. These
-are benchmark measurements, not claims about production fraud distributions.
+1. Fix counterexample fidelity, concurrent refund admission, and unsafe dynamic HTML rendering; add regression coverage.
+2. Add the merchant support request model, evidence tools, and bounded AI investigation loop.
+3. Connect human approval, one-time execution, durable follow-up, and verified closure into one workflow.
+4. Present a minimal inbox, request detail, approval queue, and evidence view; retain technical labs under an advanced section.
+5. Adapt the UI and submission materials for the intended event, validate actual model behavior, and record an end-to-end demo.
+6. Confirm event eligibility and any Paytm integration requirements before submission.
 
-## Seeded boundary campaign
+## Scope and documentation
 
-The boundary campaign goes beyond the eleven hand-authored scenarios by generating
-balanced attack and benign cases immediately above and below the correlated
-approval and monthly-budget limits. A small independent arithmetic oracle sets
-the expected outcome before the runtime guard is evaluated.
+The prototype is intended for synthetic local demonstrations. Authentication, tenant isolation, trusted approver identities, complete crash recovery, and production provider operations remain future work. SQLite admission tests cover shared-database runtime instances, not multi-host consensus. The solver currently covers a bounded split-payment model, not formal proofs of every runtime rule.
 
-`POST /api/v1/evaluations/boundary-campaigns/run` accepts a reproducible seed
-and 5–50 samples per class, producing 20–200 isolated cases. The persisted
-report includes false negatives, false positives, attack recall, accuracy,
-throughput, every generated case, and a canonical evidence hash. Repeating the
-same seed and size produces the same evidence hash.
-
-```powershell
-cd backend
-..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
-```
-
-Open `http://127.0.0.1:8000` for the interactive ArthaNiyam dashboard, or
-`http://127.0.0.1:8000/docs` for the raw API. The dashboard includes Policy
-Studio, bounded counterexample search, a live two-payment Attack Lab, a shared
-budget view, and an inspectable runtime audit trail. A ready-to-paste API
-request is also available in `docs/demo-request.json`.
-
-The stateful runtime slice is also available at `POST /api/v1/runtime/evaluate`.
-It compares request-local gateway logic with cross-request enforcement,
-atomically reserves permitted amounts, and protects against correlated payment
-splitting, duplicate invoices, action-ID conflicts, and budget races. See
-`docs/runtime-demo.md` for the two-request demonstration.
-
-Runtime policies, reservations, commitments, evaluations, audit events, and
-provider executions are persisted in SQLite. The database defaults to
-`backend/arthaniyam.sqlite3` and can be changed with
-`ARTHANIYAM_DATABASE_PATH`.
-
-Every runtime audit event is also appended to a SHA-256 hash chain with a
-persisted head checkpoint. `GET
-/api/v1/runtime/policies/{policy_id}/audit-integrity` detects changed event
-content, missing or reordered links, sequence gaps, and tail deletion against
-that checkpoint. This provides tamper evidence inside the prototype; external
-notarization of the checkpoint is outside the current boundary.
-
-After a runtime sequence, the dashboard can download a portable
-`arthaniyam.audit.v1` evidence bundle. Verify it without running the API:
-
-```powershell
-python scripts/verify_evidence.py path\to\arthaniyam-evidence.json
-```
-
-The bundle contains every event, chain link, checkpoint head, and a
-deterministic manifest hash. `POST /api/v1/evidence/verify` exposes the same
-portable verification contract for integrations. Export timestamps are not
-part of the manifest hash, so repeated exports of unchanged evidence match.
-
-Payment execution defaults to a deterministic offline Razorpay simulator. To
-connect a Razorpay Test Mode account, copy `.env.example` to `.env`, set
-`RAZORPAY_MODE=test`, and provide test-only credentials. The adapter rejects
-live keys by design. A policy-approved active reservation is required before
-`POST /api/v1/executions/orders` will create an order.
-
-## Payment lifecycle
-
-An approved action is reserved first; creating a provider order does not count
-as payment. The reservation becomes committed only after a trusted payment
-confirmation:
-
-1. `POST /api/v1/executions/orders` creates an idempotent simulator or Razorpay
-   Test Mode order.
-2. In Test Mode, the dashboard opens Razorpay Checkout. The browser sends the
-   returned payment ID, order ID, and signature to
-   `POST /api/v1/executions/confirm`.
-3. The server verifies the HMAC against its stored order ID, fetches the payment
-   from Razorpay, checks amount and currency, and commits only a captured
-   payment. The key secret is never sent to the browser.
-4. `POST /api/v1/webhooks/razorpay` provides the asynchronous path. It verifies
-   the signature against the unmodified request body, deduplicates
-   `X-Razorpay-Event-Id`, and safely handles repeated or out-of-order delivery.
-
-For webhooks, configure a separate `RAZORPAY_WEBHOOK_SECRET` and point the
-Razorpay Test Mode webhook URL at `/api/v1/webhooks/razorpay`. The simulator
-needs no credentials and automatically produces a deterministic successful
-confirmation for the dashboard demo.
-
-This prototype never enables live money movement. Test credentials beginning
-with `rzp_test_` are accepted; live credentials are rejected.
+Existing [architecture](docs/architecture.md), [demo script](docs/judge-demo.md), [submission narrative](docs/submission.md), [judge Q&A](docs/judge-qa.md), and [checklist](docs/submission-checklist.md) describe the earlier buildathon package. Some wording and UI branding still reference that event; revising them is an explicit milestone in the new [implementation plan](implementation.md).
