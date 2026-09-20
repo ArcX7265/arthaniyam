@@ -8,7 +8,7 @@ The Paytm hackathon direction extends this working policy engine into a teammate
 
 **Intended submission:** Paytm Build for India AI Hackathon, Mumbai — Autonomous AI Teammates.
 
-> Status: the support workflow now includes a **bounded OpenAI investigator**, plus a labelled offline keyword reference. It reads scoped evidence, asks for information and proposes a resolution. The operator confirms intent; deterministic checks and finance approvals retain authority. Live-model behavior has not been validated locally because no API key is configured. Support payments remain simulated; the existing Razorpay Test Mode adapter remains in the technical labs. No Paytm integration or real-money refunds are enabled. ArthaNiyam does not depend on Resora.
+> Status: the support workflow includes a **local Ollama investigator**, an optional OpenAI investigator, and a labelled offline keyword reference. It reads scoped evidence, asks for information and proposes a resolution. The operator confirms intent; deterministic checks and finance approvals retain authority. Local Llama 3.2 evaluation results are recorded below. Support payments remain simulated; the existing Razorpay Test Mode adapter remains in the technical labs. No Paytm integration or real-money refunds are enabled. ArthaNiyam does not depend on Resora.
 
 ## The problem
 
@@ -51,10 +51,10 @@ Implemented synthetic scenarios cover duplicate payments, cancelled orders, acce
 | Evaluation                  | Fixed adversarial scenarios, benign controls, seeded boundary campaigns, and judge scorecards                       |
 | Reproducibility             | Windows launch/verification scripts, Docker Compose, and GitHub Actions configuration                               |
 | Support workflow            | Reference-mode intake, evidence, cumulative approval threshold, expiring review, takeover and durable synthetic receipts |
-| AI support investigator     | Implemented Responses tool loop, clarification, evidence-bound proposals, timeout and fail-closed handoff; live-model validation pending |
+| AI support investigator     | Local Ollama structured tool loop and optional OpenAI Responses loop; clarification, evidence-bound proposals, timeout and handoff |
 | Paytm integration           | Not implemented; depends on permitted product APIs and test access                                                  |
 
-Policy extraction and support investigation are separate optional AI paths. The investigator can read and propose, but has no refund-execution, finance-approval or policy-editing tools. Generated rationales are labelled proposals, not authoritative payment facts. Financial authorization remains deterministic in both modes.
+Policy extraction and support investigation are separate optional AI paths. The investigator can read and propose, but has no refund-execution, finance-approval or policy-editing tools. Generated rationales are labelled proposals, not authoritative payment facts. Financial authorization remains deterministic in all modes.
 
 ## Run locally
 
@@ -86,7 +86,26 @@ Each capture has finite funds; loading fixtures again does not erase refunds. A 
 
 The API automatically polls durable receipt jobs every two seconds. Jobs survive restarts. An optional standalone worker runs from `backend` with `python -m app.support.worker` and the same database environment. All receipts are synthetic, not bank-confirmed settlements. Refund-status requests can be investigated again after the underlying receipt arrives; they do not initiate another refund.
 
-The **Guided reference workflow** preserves the earlier explicitly classified intake. The default investigator is also offline unless configured below; its narrow keyword recognizer is not an LLM. It asks for clarification for unsupported or conflicting wording.
+The **Guided reference workflow** preserves the earlier explicitly classified intake. To run without any model, use `-InvestigatorMode reference`; its narrow keyword recognizer is not an LLM.
+
+### Use local Llama 3.2 (no API credits)
+
+Keep Ollama running and confirm `ollama list` contains `llama3.2:3b`. If Ollama is stopped, run `ollama serve` in another terminal. For a fresh installation only, download the model with `ollama pull llama3.2:3b`.
+
+Set these values in the repository-root `.env`:
+
+```dotenv
+SUPPORT_INVESTIGATOR_MODE=ollama
+OLLAMA_MODEL=llama3.2:3b
+POLICY_COMPILER_MODE=reference
+RAZORPAY_MODE=simulate
+```
+
+Start the app with `.\scripts\start-demo.ps1 -InvestigatorMode ollama` (also the launcher's default). No OpenAI key is needed. The separate policy compiler stays in reference mode.
+
+Complaints and scoped evidence go to `http://127.0.0.1:11434/api/chat`. The adapter uses [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs) to select one tool per turn, then validates it through the same server tool guard. It never silently switches to OpenAI or keyword mode. Ollama must have the selected model installed; the UI's configured model label does not imply a live health check.
+
+Allow up to three minutes per investigation, especially while loading the model. The limit is six model calls, 900 output tokens per call, 120 seconds per HTTP call and 180 seconds overall. Local speed and classification quality depend on your hardware/model. If Ollama is unavailable, the case goes to review with a retry message. The loopback endpoint is for native local startup; the existing Docker Compose setup remains in reference mode and does not connect to host Ollama.
 
 ### Enable the OpenAI investigator
 
@@ -96,11 +115,11 @@ Set `OPENAI_API_KEY` in the repository-root `.env` (never commit it or paste it 
 .\scripts\start-demo.ps1 -InvestigatorMode openai
 ```
 
-For direct Uvicorn startup, set `SUPPORT_INVESTIGATOR_MODE=openai` and `RAZORPAY_MODE=simulate`. The launcher defaults to `-InvestigatorMode reference`, regardless of the `.env` investigator mode. The UI shows the configured mode and whether a key is missing.
+For direct Uvicorn startup, set `SUPPORT_INVESTIGATOR_MODE=openai` and `RAZORPAY_MODE=simulate`. The launcher defaults to `-InvestigatorMode ollama`, regardless of the `.env` investigator mode; pass an explicit mode to override it. The UI shows the configured mode and whether an OpenAI key is missing.
 
 OpenAI mode sends the complaint, follow-up messages and selected synthetic evidence to the Responses API. Use demo data only. The [official function-calling contract](https://developers.openai.com/api/docs/guides/function-calling) informs the strict schemas and tool-output loop. Limits: six model calls, 1,800 output tokens per call, a 45-second overall timeout and ten follow-up messages per case. Request storage is disabled (`store: false`); that is not a claim of zero provider retention. Private reasoning is neither persisted nor displayed. No model errors silently fall back to reference mode.
 
-Investigation claims expire after 60 seconds. After a process interruption, click **Investigate again** after that lease expires. New information or human takeover invalidates an outstanding result. Expired proposals and changed evidence must be investigated again before confirmation. The API is a local simulator without trusted user identity or tenant isolation; do not expose it publicly.
+Investigation claims expire 15 seconds after the overall timeout: 195 seconds for Ollama, 60 seconds for OpenAI/reference. After a process interruption, click **Investigate again** after that lease expires. New information or human takeover invalidates an outstanding result. Expired proposals and changed evidence must be investigated again before confirmation. The API is a local simulator without trusted user identity or tenant isolation; do not expose it publicly.
 
 Alternatively, with Docker available:
 
@@ -148,17 +167,22 @@ The planned teammate will call these services through scoped tools. It will not 
 .\scripts\verify-project.ps1
 ```
 
-The suite has 115 tests: the original 71, 18 support cases and 26 investigator cases. Coverage includes concurrency, restart recovery, stale proposals/approvals, clarification, malformed/unauthorized tool calls, timeouts, no-fallback behavior and provider error redaction. Verification checks both frontend scripts. Model transports are mocked for safety/contract tests; these are not live-model accuracy measurements.
+The suite has 128 tests: the original 71, 18 support cases and 39 investigator cases. Coverage includes concurrency, restart recovery, stale proposals/approvals, clarification, malformed/unauthorized tool calls, timeouts, no-fallback behavior and provider error redaction. Ollama tests cover the HTTP contract, local provider failures, operator confirmation and longer investigation leases. Model transports are mocked for safety/contract tests; these are not live-model accuracy measurements.
 
 Run the seven-fixture investigation evaluation separately (no proposals are confirmed and no refunds are sent):
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/evaluate-investigator.py --mode reference
+.\.venv\Scripts\python.exe scripts/evaluate-investigator.py --mode ollama --model llama3.2:3b --max-cases 7
 # Explicit opt-in to paid API calls after configuring a key:
 .\.venv\Scripts\python.exe scripts/evaluate-investigator.py --mode openai --max-cases 7
 ```
 
 The command prints per-fixture outcomes and exits nonzero on a failed expectation. Reference-mode results test the offline recognizer only. Record actual live results, including failures, before using them in the submission.
+
+Local evaluation on 20 September 2026: `llama3.2:3b`, Ollama 0.34.2, CPU inference, **5/7 fixtures passed** after prompt revisions. Duplicate payment, cancellation, missing payment, missing amount and ambiguous complaint passed. The status-only case unnecessarily requested information; the instruction-injection case incorrectly proposed `refund_request`. Each model-backed case took about 19–23 seconds; the missing-payment case required no model call. No proposals were confirmed and no refunds were sent. Earlier prompt versions scored 4/7 and 2/7, showing sensitivity to wording. These are development fixtures used during tuning, not an independent accuracy benchmark; expand evaluation before the hackathon.
+
+Regression checkpoint: 39/39 investigator tests passed; the full suite had 127 passes and one existing failure because `frontend/app.js` was moved to the root and `/assets/app.js` returns 404. The Ollama integration does not move that file. Support JavaScript syntax validation passed.
 
 The included fixed benchmark has seven attack scenarios and four benign controls. The guided scorecard combines those with 20 generated boundary cases. Report results with their fixture counts; synthetic measurements do not establish production fraud accuracy or customer impact.
 
@@ -173,7 +197,7 @@ Hashes help detect changes against a trusted record. They do not independently p
 
 ## Next delivery milestones
 
-1. Configure an API key and evaluate the implemented investigator on real-model paraphrases, ambiguity and malicious instructions before claiming AI quality in the submission.
+1. Expand the local-model evaluation with unseen paraphrases, ambiguity and malicious instructions before claiming AI quality in the submission. API credits are optional.
 2. Fix solver witness fidelity and audit dynamic rendering in the legacy technical labs. The new support workspace uses text nodes for untrusted values.
 3. Add trusted operator identity, merchant isolation, approval rejection/resume, customer updates and production provider reconciliation.
 4. Refresh the remaining submission materials, validate model behavior and record an end-to-end demo.

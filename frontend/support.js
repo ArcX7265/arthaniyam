@@ -52,12 +52,12 @@ function renderDetail() {
   title.append(node("p", c.case_id, "case-id"), node("h2", caseTitle(c)));
   heading.append(title, badge(c.status)); detail.append(heading, node("p", c.request.message, "complaint"));
   if (c.intake === "investigator") {
-    detail.append(node("p", c.mode === "openai_investigator" ? "OpenAI investigator · financial authority remains with the server." : "Offline reference investigator · keyword-based, not a live model."));
-    if (c.status === "investigating") detail.append(node("p", "Investigation is running (up to 45 seconds). If interrupted, retry after one minute; persisted run claims prevent duplicate work."));
+    detail.append(node("p", c.mode === "ollama_investigator" ? "Local AI investigator · powered by Ollama." : c.mode === "openai_investigator" ? "OpenAI investigator · financial authority remains with the server." : "Offline reference investigator · keyword-based, not a live model."));
+    if (c.status === "investigating") detail.append(node("p", c.mode === "ollama_investigator" ? "Your local model is investigating. This may take up to three minutes, especially on the first request." : "Investigation is running (up to 45 seconds). If interrupted, retry after one minute."));
     for (const message of c.messages || []) detail.append(node("p", `Follow-up: ${message.message}`, "complaint"));
     if (c.investigation) {
       const info = c.investigation;
-      detail.append(node("h3", info.mode === "openai" ? "AI investigation" : "Reference investigation"));
+      detail.append(node("h3", info.mode === "reference" ? "Reference investigation" : "AI investigation"));
       detail.append(node("p", info.details.question || info.details.reason || info.details.rationale));
       if (info.tools.length) detail.append(node("p", `Tools used: ${info.tools.map(item => item.tool.replaceAll("_", " ")).join(" → ")}`, "case-id"));
     }
@@ -163,8 +163,8 @@ $("request-form").onsubmit = async event => {
 };
 refresh().catch(error => {$("message").textContent = error.message;});
 api("/investigator/capabilities").then(cap => {
-  const mode = cap.mode === "openai" ? `OpenAI investigator (${cap.model})${cap.configured ? "" : " — API key not configured"}` : "Offline reference investigator — no live model";
+  const mode = cap.mode === "ollama" ? `Local AI investigator (${cap.model})` : cap.mode === "openai" ? `OpenAI investigator (${cap.model})${cap.configured ? "" : " — API key not configured"}` : "Offline reference investigator — no live model";
   $("investigator-mode").textContent = `${mode}. Synthetic payments only; no real money moves. Demo approvals are not authenticated finance access.`;
-  $("data-notice").textContent = cap.mode === "openai" ? "AI mode sends this complaint, follow-up messages and selected synthetic payment evidence to OpenAI. Use demo data only. Guided mode stays offline." : "Investigation uses an offline keyword reference. Configure OpenAI on the server for model-based understanding.";
+  $("data-notice").textContent = cap.mode === "ollama" ? "Complaints and demo evidence are processed by Ollama on this computer. Keep Ollama running. No paid API is used." : cap.mode === "openai" ? "AI mode sends this complaint, follow-up messages and selected synthetic payment evidence to OpenAI. Use demo data only. Guided mode stays offline." : "Investigation uses an offline keyword reference. Select Ollama for local AI understanding.";
 }).catch(error => {$("investigator-mode").textContent = `Could not check investigator configuration: ${error.message}`;});
 setInterval(() => {if (!busy && !document.hidden && !$("request-dialog").open) refresh().catch(error => {$("message").textContent = `Refresh failed: ${error.message}`;});}, 3000);

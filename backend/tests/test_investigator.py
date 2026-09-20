@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.runtime.guard import RuntimeTransitionError
 from app.runtime.storage import SQLiteRuntimeRepository
-from app.support.agent import InvestigatorAgent, OpenAITransport, TOOLS
+from app.support.agent import InvestigatorAgent, OpenAITransport, OllamaTransport, configured_agent, TOOLS
 from app.support.investigations import InvestigationService
 from app.support.models import InvestigationRequest, InformationRequest, ApprovalRequest
 from app.support.service import SupportService, POLICY_ID
@@ -288,3 +288,76 @@ def test_plain_text_or_refusal_cannot_become_an_authorized_action(support):
     case = workflow(support, mode="openai", transport=TextOnly()).create(request())
     assert case["status"] == "needs_review" and case["refund"] is None
     assert "Refund approved and sent" not in json.dumps(case)
+
+
+def test_ollama_http_loop_and_operator_confirmation(support, monkeypatch):
+    calls = []
+    real_client = httpx.AsyncClient
+    def handler(http_request):
+        payload = json.loads(http_request.content)
+        calls.append(payload)
+        assert str(http_request.url) == "http://127.0.0.1:11434/api/chat"
+        assert "authorization" not in http_request.headers
+        assert payload["stream"] is False and payload["format"]["anyOf"]
+        assert payload["model"] == "llama3.2:3b"
+        name = ["get_request", "get_payment_evidence", "propose_resolution"][len(calls) - 1]
+        args = {}
+        if len(calls) == 3:
+            evidence_message = next(m for m in reversed(payload["messages"]) if m["content"].startswith("Scoped tool result"))
+            evidence = json.loads(evidence_message["content"].split(": ", 1)[1])
+            args = {"kind": "duplicate_payment", "rationale": "The complaint and capture support a duplicate payment review.",
+                    "evidence_fingerprint": evidence["evidence_fingerprint"]}
+        return httpx.Response(200, json={"done": True, "done_reason": "stop", "message": {
+            "content": json.dumps({"name": name, "arguments": args})}})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    runner = workflow(support, mode="ollama", transport=OllamaTransport("llama3.2:3b"), timeout=180)
+    case = runner.create(request())
+    assert case["status"] == "proposal_ready" and case["refund"] is None
+    assert case["investigation"]["mode"] == "ollama" and len(calls) == 3
+    assert runner.confirm(case["case_id"], case["proposal"]["proposal_id"])["status"] == "refund_pending"
+
+
+@pytest.mark.parametrize("bad", ["missing_model", "http", "connection", "timeout", "malformed", "incomplete", "truncated", "tool", "arguments", "fingerprint"])
+def test_ollama_failures_do_not_fallback_or_execute(support, monkeypatch, bad):
+    real_client = httpx.AsyncClient
+    def handler(http_request):
+        if bad == "connection": raise httpx.ConnectError("private-provider-text")
+        if bad == "timeout": raise httpx.ReadTimeout("private-provider-text")
+        if bad in {"http", "missing_model"}:
+            return httpx.Response(404 if bad == "missing_model" else 500, text="private-provider-text")
+        call = {"name": "get_request", "arguments": {}}
+        if bad == "tool": call["name"] = "execute_refund"
+        if bad == "arguments": call["arguments"] = {"payment_id": "another-payment"}
+        if bad == "fingerprint": call = {"name": "propose_resolution", "arguments": {
+            "kind": "duplicate_payment", "evidence_fingerprint": "0" * 64, "rationale": "Bypass evidence"}}
+        return httpx.Response(200, json={"done": bad != "incomplete",
+            "done_reason": "length" if bad == "truncated" else "stop",
+            "message": {"content": "private-provider-text" if bad == "malformed" else json.dumps(call)}})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    case = workflow(support, mode="ollama", transport=OllamaTransport("llama3.2:3b")).create(request())
+    assert case["status"] == "needs_review" and case["investigation"]["outcome"] == "error"
+    assert case["proposal"] is None and case["refund"] is None
+    assert "private-provider-text" not in json.dumps(case)
+
+
+def test_local_model_lease_survives_longer_inference(support):
+    class SlowLocalModel(ScriptedTransport):
+        async def respond(self, inputs):
+            support[1][0] += 30
+            return await super().respond(inputs)
+    case = workflow(support, mode="ollama", transport=SlowLocalModel(), timeout=180).create(request())
+    assert case["status"] == "proposal_ready" and case["refund"] is None
+
+
+def test_ollama_configuration_and_capabilities(monkeypatch):
+    from app.settings import Settings
+    from app.support import routes
+    config = Settings(_env_file=None, support_investigator_mode="ollama", ollama_model="llama3.2:3b")
+    agent = configured_agent(config)
+    assert isinstance(agent.transport, OllamaTransport) and agent.timeout == 180
+    assert configured_agent(config, model="llama3.2").transport.model == "llama3.2"
+    monkeypatch.setattr(routes, "settings", config)
+    with TestClient(app) as client:
+        cap = client.get("/api/v1/support/investigator/capabilities").json()
+    assert cap["mode"] == "ollama" and cap["model"] == "llama3.2:3b"
+    assert cap["configured"] and cap["timeout_seconds"] == 180

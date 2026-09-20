@@ -1,6 +1,7 @@
 """Synthetic investigator evaluation; never confirms proposals or sends refunds.
 
-Reference mode is offline. Explicit --mode openai sends up to six API calls per
+Ollama mode uses a local model without API credits. Reference mode uses keywords.
+Explicit --mode openai sends up to six API calls per
 fixture and requires server credentials; costs and model results are real.
 """
 import argparse
@@ -29,7 +30,8 @@ FIXTURES = [
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=["reference", "openai"], default="reference")
+    parser.add_argument("--mode", choices=["reference", "openai", "ollama"], default="reference")
+    parser.add_argument("--model", help="Override the configured model for Ollama or OpenAI")
     parser.add_argument("--max-cases", type=int, default=len(FIXTURES))
     args = parser.parse_args()
     if not 1 <= args.max_cases <= len(FIXTURES):
@@ -43,14 +45,14 @@ def main():
         # a global repository at import time. Never touch the user's default DB.
         os.environ["ARTHANIYAM_DATABASE_PATH"] = name
         from app.runtime.storage import SQLiteRuntimeRepository
-        from app.support.agent import InvestigatorAgent, OpenAITransport
+        from app.support.agent import configured_agent
         from app.support.investigations import InvestigationService
         from app.support.models import InvestigationRequest
         from app.support.service import SupportService
 
         support = SupportService(SQLiteRuntimeRepository(name))
         support.seed()
-        runner = InvestigationService(support, InvestigatorAgent(args.mode, OpenAITransport(settings.openai_api_key, settings.openai_model)))
+        runner = InvestigationService(support, configured_agent(settings, mode=args.mode, model=args.model))
         results = []
         for index, (label, message, payment, amount, expected_status, kind) in enumerate(FIXTURES[:args.max_cases]):
             started = time.monotonic()
@@ -63,7 +65,8 @@ def main():
             results.append({"fixture": label, "passed": passed, "status": case["status"], "kind": proposed_kind,
                             "tools": len(case["investigation"]["tools"]), "elapsed_seconds": round(time.monotonic() - started, 2),
                             "error": case["investigation"]["details"].get("reason") if case["investigation"]["outcome"] == "error" else None})
-        report = {"mode": args.mode, "model": settings.openai_model if args.mode == "openai" else None,
+            print(f"[{index + 1}/{args.max_cases}] {label}: {'PASS' if passed else 'FAIL'} ({results[-1]['elapsed_seconds']}s)", file=sys.stderr, flush=True)
+        report = {"mode": args.mode, "model": (args.model or (settings.ollama_model if args.mode == "ollama" else settings.openai_model)) if args.mode != "reference" else None,
                   "fixtures": len(results), "passed": sum(item["passed"] for item in results),
                   "limitations": "Small synthetic fixture set, not production accuracy. Reference mode is not a live AI evaluation. No proposals were confirmed.",
                   "results": results}

@@ -2,8 +2,8 @@
 param(
     [ValidateRange(1024, 65535)]
     [int]$Port = 8000,
-    [ValidateSet("reference", "openai")]
-    [string]$InvestigatorMode = "reference"
+    [ValidateSet("reference", "openai", "ollama")]
+    [string]$InvestigatorMode = "ollama"
 )
 
 $ErrorActionPreference = "Stop"

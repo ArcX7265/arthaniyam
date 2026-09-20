@@ -53,7 +53,7 @@ class InvestigationService:
             if active and active["expires_at"] > service.clock():
                 return None
             evidence = service._snapshot(case) if case["request"]["payment_id"] else None
-            claim = {"token": uuid4().hex, "expires_at": service.clock() + 60,
+            claim = {"token": uuid4().hex, "expires_at": service.clock() + self.agent.timeout + 15,
                      "input_fingerprint": digest({"request": case["request"], "messages": case["messages"]}),
                      "evidence_fingerprint": digest(evidence) if evidence else None}
             case.update(status="investigating", investigation_run=claim, proposal=None, approval=None,

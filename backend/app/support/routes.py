@@ -5,7 +5,7 @@ from app.settings import settings
 from app.support.models import (ApprovalRequest, ComplaintRequest, TakeoverRequest,
                                 InvestigationRequest, InformationRequest, ConfirmProposalRequest)
 from app.support.service import SupportService
-from app.support.agent import InvestigatorAgent, OpenAITransport
+from app.support.agent import configured_agent
 from app.support.investigations import InvestigationService
 
 
@@ -13,10 +13,7 @@ service = SupportService(runtime_guard.repository)
 
 
 def investigator() -> InvestigationService:
-    return InvestigationService(service, InvestigatorAgent(
-        settings.support_investigator_mode,
-        OpenAITransport(settings.openai_api_key, settings.openai_model),
-    ))
+    return InvestigationService(service, configured_agent(settings))
 
 
 def simulator_only(request: Request) -> None:
@@ -35,10 +32,11 @@ router = APIRouter(prefix="/api/v1/support", tags=["Support simulator"], depende
 @router.get("/investigator/capabilities")
 def investigator_capabilities():
     return {"mode": settings.support_investigator_mode,
-            "configured": settings.support_investigator_mode == "reference" or bool(settings.openai_api_key and settings.openai_api_key != "replace_me"),
-            "model": settings.openai_model if settings.support_investigator_mode == "openai" else None,
-            "max_tool_calls": 6, "timeout_seconds": 45, "requires_intent_confirmation": True,
-            "external_data": "Complaint and selected synthetic payment evidence are sent to OpenAI only in openai mode."}
+            "configured": settings.support_investigator_mode != "openai" or bool(settings.openai_api_key and settings.openai_api_key != "replace_me"),
+            "model": settings.ollama_model if settings.support_investigator_mode == "ollama" else settings.openai_model if settings.support_investigator_mode == "openai" else None,
+            "max_tool_calls": 6, "timeout_seconds": 180 if settings.support_investigator_mode == "ollama" else 45,
+            "requires_intent_confirmation": True,
+            "external_data": "Ollama uses the local server at 127.0.0.1:11434; it must be running with the selected model installed. OpenAI mode sends complaint and selected synthetic evidence to OpenAI. Reference mode uses offline keywords."}
 
 
 @router.post("/investigations", status_code=201)

@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     policy_compiler_mode: Literal["reference", "openai"] = "reference"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5-mini"
-    support_investigator_mode: Literal["reference", "openai"] = "reference"
+    support_investigator_mode: Literal["reference", "openai", "ollama"] = "reference"
+    ollama_model: str = "llama3.2:3b"
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
