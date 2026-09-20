@@ -31,11 +31,11 @@ def test_dashboard_is_served_from_root() -> None:
 
     assert response.status_code == 200
     assert "ArthaNiyam" in response.text
-    assert "run-attack-button" in response.text
+    assert "request-form" in response.text
 
 
 def test_dashboard_preserves_utf8_and_keyboard_landmarks() -> None:
-    response = client.get("/")
+    response = client.get("/labs")
 
     assert "ArthaNiyam — Financial policy control plane" in response.text
     assert "अ" in response.text

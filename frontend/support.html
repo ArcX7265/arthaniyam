@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArthaNiyam — Merchant support</title>
+  <meta name="description" content="Evidence-led merchant refund support, protected by deterministic financial controls." />
+  <link rel="stylesheet" href="/assets/support.css?v=investigator-1" />
+  <script src="/assets/support.js?v=investigator-1" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to requests</a>
+  <header><a class="brand" href="/">अ <span>ArthaNiyam</span></a><nav aria-label="Primary"><a href="/labs">Technical labs</a><a href="/docs">API</a><span class="mode">Payment simulator</span></nav></header>
+  <main id="main-content">
+    <div class="heading"><div><p class="eyebrow">MERCHANT SUPPORT</p><h1>Resolve with confidence.</h1><p>One place to investigate, approve and track refund requests.</p></div><button id="new-request" type="button">New request</button></div>
+    <p class="notice" id="investigator-mode" role="status">Checking investigator mode… Payments and confirmations are synthetic. No real money moves.</p>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="metrics" aria-label="Support outcomes" class="metrics"></section>
+    <div class="workspace">
+      <section class="inbox" aria-label="Request inbox">
+        <div class="inbox-header"><h2>Requests</h2><button id="refresh" class="quiet" type="button">Refresh</button></div>
+        <label for="search" class="sr-only">Search requests</label><input id="search" type="search" placeholder="Search requests…" />
+        <div id="requests"></div>
+        <button id="load-demo" class="quiet demo-button" type="button">Load demo payments</button>
+      </section>
+      <section id="detail" class="detail" aria-label="Request details"><div class="empty"><h2>A clear path from complaint to outcome.</h2><p>Load demo payments, then create a request. Each decision comes with the evidence that informed it.</p></div></section>
+    </div>
+    <footer>Built for the Paytm hackathon direction · Autonomous AI Teammates · No Paytm integration or affiliation implied.</footer>
+  </main>
+  <dialog id="request-dialog" aria-labelledby="form-title">
+    <form id="request-form">
+      <div class="inbox-header"><h2 id="form-title">New support request</h2><button id="close-dialog" type="button" class="quiet" aria-label="Close new request">Close</button></div>
+      <label for="intake-mode" id="intake-label">Workflow</label><select id="intake-mode"><option value="investigator">Investigate my complaint</option><option value="guided">Guided reference workflow</option></select>
+      <label for="payment">Payment</label><select id="payment"></select>
+      <div id="guided-fields" hidden><label for="kind">Complaint type</label><select id="kind"><option value="duplicate_payment">Duplicate payment</option><option value="cancelled_order">Cancelled order refund</option><option value="refund_request">Accepted return / partial refund</option><option value="refund_status">Track an existing refund</option><option value="other">Other / needs investigation</option></select></div>
+      <label for="amount">Requested refund (INR)</label><input id="amount" type="text" inputmode="decimal" pattern="[0-9]+(\.[0-9]{1,2})?" placeholder="1250.00" /><small>Optional for investigation. Before a refund can be proposed, enter its exact amount here; the model cannot choose it.</small>
+      <label for="complaint">What happened?</label><textarea id="complaint" rows="3" minlength="3" maxlength="2000" required placeholder="The customer was charged twice for the same order."></textarea>
+      <p id="data-notice" class="notice"></p><p id="form-error" role="alert"></p><button type="submit" id="submit-request">Investigate request</button>
+    </form>
+  </dialog>
+</body>
+</html>

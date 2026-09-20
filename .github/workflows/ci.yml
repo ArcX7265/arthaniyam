@@ -31,6 +31,8 @@ jobs:
           ARTHANIYAM_DATABASE_PATH: /tmp/arthaniyam-ci.sqlite3
         run: python -m pytest -q -p no:cacheprovider
       - name: Validate frontend JavaScript
-        run: node --check frontend/app.js
+        run: |
+          node --check frontend/app.js
+          node --check frontend/support.js
       - name: Build judge container
         run: docker build --tag arthaniyam:ci .

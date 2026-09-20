@@ -1,4 +1,7 @@
 from pathlib import Path
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -72,13 +75,40 @@ from app.runtime.models import (
 )
 from app.settings import settings
 from app.shadow import PolicyImpactReport, PolicyImpactRequest, PolicyImpactService
+from app.support.routes import router as support_router, service as support_service
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    stop = asyncio.Event()
+
+    async def reconcile():
+        while not stop.is_set():
+            if settings.razorpay_mode == "simulate":
+                try:
+                    await asyncio.to_thread(support_service.tick)
+                except Exception:
+                    logging.exception("Support receipt batch rolled back; retrying")
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=2)
+            except TimeoutError:
+                pass
+
+    task = asyncio.create_task(reconcile())
+    try:
+        yield
+    finally:
+        stop.set()
+        await task
 
 
 app = FastAPI(
+    lifespan=lifespan,
     title="ArthaNiyam API",
     description="Verify and enforce bounded financial policies for autonomous systems.",
     version="0.1.0",
 )
+app.include_router(support_router)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = PROJECT_ROOT / "frontend"
@@ -110,6 +140,11 @@ guided_demo_service = GuidedDemoService(runtime_guard.repository)
 
 @app.get("/", include_in_schema=False)
 def dashboard() -> FileResponse:
+    return FileResponse(FRONTEND_ROOT / "support.html")
+
+
+@app.get("/labs", include_in_schema=False)
+def technical_labs() -> FileResponse:
     return FileResponse(FRONTEND_ROOT / "index.html")
 
 
@@ -128,6 +163,7 @@ def system_capabilities() -> dict[str, str | bool | int]:
         "demo_approvals_enabled": settings.razorpay_mode == "simulate",
         "demo_delegations_enabled": settings.razorpay_mode == "simulate",
         "demo_refunds_enabled": settings.razorpay_mode == "simulate",
+        "support_mode": "reference_simulator" if settings.razorpay_mode == "simulate" else "disabled",
         "adversarial_scenarios": 11,
         "judge_scorecard_enabled": True,
         "guided_demo_enabled": True,

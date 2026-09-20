@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
+from threading import local
 from typing import Iterator
 
 from app.policy.models import PolicyDefinition
@@ -80,12 +81,17 @@ class SQLiteRuntimeRepository:
     """
 
     def __init__(self, database_path: str | Path = DEFAULT_DATABASE_PATH) -> None:
+        self._transactions = local()
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
+        active = getattr(self._transactions, "connection", None)
+        if active is not None:
+            yield active
+            return
         connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -98,6 +104,28 @@ class SQLiteRuntimeRepository:
             raise
         finally:
             connection.close()
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        """Serialize read/check/write workflows, including nested repository calls.
+
+        Synchronous, same-thread use only. Never perform network I/O here.
+        Exceptions must propagate to the outer transaction to roll back the unit.
+        """
+        if getattr(self._transactions, "connection", None) is not None:
+            raise RuntimeError("explicit nested transactions are not supported")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._transactions.connection = connection
+            try:
+                yield connection
+            finally:
+                self._transactions.connection = None
+
+    @staticmethod
+    def _begin_immediate(connection: sqlite3.Connection) -> None:
+        if not connection.in_transaction:
+            connection.execute("BEGIN IMMEDIATE")
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -332,6 +360,9 @@ class SQLiteRuntimeRepository:
 
     def reset(self) -> None:
         with self._connect() as connection:
+            for table in ("support_jobs", "support_cases", "support_payments", "support_policy"):
+                if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
+                    connection.execute(f"DELETE FROM {table}")
             connection.execute("DELETE FROM guided_demo_reports")
             connection.execute("DELETE FROM judge_scorecards")
             connection.execute("DELETE FROM policy_impact_reports")
@@ -744,7 +775,7 @@ class SQLiteRuntimeRepository:
 
     def register_policy(self, policy: PolicyDefinition) -> None:
         with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+            self._begin_immediate(connection)
             row = connection.execute(
                 "SELECT policy_json FROM policies WHERE policy_id = ? AND version = ?",
                 (policy.policy_id, policy.version),
@@ -809,7 +840,7 @@ class SQLiteRuntimeRepository:
         """Recheck shared invariants and reserve under one database write lock."""
 
         with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+            self._begin_immediate(connection)
             existing = connection.execute(
                 """SELECT action_json, status FROM ledger_entries
                 WHERE policy_id = ? AND version = ? AND action_id = ?""",
@@ -968,7 +999,7 @@ class SQLiteRuntimeRepository:
 
     def append_audit(self, policy_id: str, version: int, event: AuditEvent) -> None:
         with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+            self._begin_immediate(connection)
             head = connection.execute(
                 """SELECT event_count, head_hash FROM audit_chain_heads
                 WHERE policy_id = ? AND version = ?""",

@@ -8,7 +8,7 @@ The Paytm hackathon direction extends this working policy engine into a teammate
 
 **Intended submission:** Paytm Build for India AI Hackathon, Mumbai — Autonomous AI Teammates.
 
-> Status: the policy engine and technical demo work today. The autonomous support workflow described below is planned. Payments use an offline simulator or the existing Razorpay Test Mode adapter; there is no Paytm integration yet. ArthaNiyam is the standalone submission and does not depend on Resora.
+> Status: the support workflow now includes a **bounded OpenAI investigator**, plus a labelled offline keyword reference. It reads scoped evidence, asks for information and proposes a resolution. The operator confirms intent; deterministic checks and finance approvals retain authority. Live-model behavior has not been validated locally because no API key is configured. Support payments remain simulated; the existing Razorpay Test Mode adapter remains in the technical labs. No Paytm integration or real-money refunds are enabled. ArthaNiyam does not depend on Resora.
 
 ## The problem
 
@@ -18,13 +18,13 @@ ArthaNiyam evaluates actions against shared commitments, captures, refunds, appr
 
 ## Hackathon workflow
 
-The first complete teammate workflow will focus on merchant refund support:
+The teammate workflow focuses on merchant refund support:
 
 1. A merchant submits a request such as “Check this customer's refund and process the eligible balance.”
-2. The AI retrieves the associated order, capture, prior refunds, and applicable policy, and asks for clarification if the match is uncertain.
-3. It proposes an action with evidence references. The deterministic policy engine decides whether to allow it, require approval, or deny it.
+2. The investigator asks for an exact payment and operator-entered refund amount when missing. It reads the selected order, capture, prior refunds and applicable policy through scoped tools; it cannot guess another payment.
+3. It proposes a complaint classification with an evidence fingerprint. After the operator confirms that the proposal matches their intent, deterministic server checks decide whether to allow it, require finance approval, or deny it.
 4. The teammate executes an allowed action, waits for a bound human approval, or escalates a denied or ambiguous request.
-5. It verifies provider completion, updates the support request, and attaches the action and audit evidence.
+5. The simulator receipt worker confirms the synthetic outcome, updates the support request, and attaches the action and audit evidence. This is not real bank settlement.
 
 The original split-payment demonstration remains available as a technical example. A customer-service workflow provides a closer fit to the supplied track description than policy inspection alone. The exact event rules, reuse eligibility, and integration requirements still need confirmation from the organisers.
 
@@ -32,9 +32,9 @@ The original split-payment demonstration remains available as a technical exampl
 
 ### Features to adapt from Resora
 
-Resora provides useful reference implementations for complaint intake, a searchable case inbox, linked order/payment/refund evidence, approval invalidation when records change, human takeover, and persistent simulated follow-ups. Adapt these behaviors into ArthaNiyam's backend and minimal interface; they are not yet ported.
+The first support slice adapts Resora's complaint intake, searchable inbox, linked order/payment/refund evidence, approval invalidation when records change, human takeover, and persistent simulated follow-ups into Python and a minimal interface. No Resora runtime or database is imported.
 
-Start with duplicate-payment complaints and tracking existing refunds. Add payment-after-cancellation and delayed duplicate-payment cases once the first workflow is complete. Keep ArthaNiyam's policy engine as the financial authorization boundary. Resora's tests and scenario fixtures can guide new Python tests, while its Next.js runtime and workspace database remain separate.
+Implemented synthetic scenarios cover duplicate payments, cancelled orders, accepted returns/partial refunds, and checking existing support refunds. Missing evidence goes to human review. This does not yet handle delayed captures, arbitrary transaction complaints, or real provider disputes.
 
 ### Capability status
 
@@ -45,15 +45,16 @@ Start with duplicate-payment complaints and tracking existing refunds. Add payme
 | Runtime enforcement         | Shared budget reservations, invoice checks, correlation, and action replay protection                               |
 | Approvals                   | Expiring simulator approvals bound to policy version and action contents                                            |
 | Delegation                  | Simulator authority graph with conservation checks                                                                  |
-| Refunds                     | Sequential cumulative-refund and replay checks in the simulator; cross-instance atomic admission still needs fixing |
+| Refunds                     | Atomic cumulative-refund admission and audit recording across shared-SQLite instances; idempotent retries          |
 | Provider execution          | Offline simulator and Razorpay Test Mode adapter; live keys rejected                                                |
 | Evidence                    | Persisted proof replay, audit hash chains, portable exports, and standalone verifiers                               |
 | Evaluation                  | Fixed adversarial scenarios, benign controls, seeded boundary campaigns, and judge scorecards                       |
 | Reproducibility             | Windows launch/verification scripts, Docker Compose, and GitHub Actions configuration                               |
-| Autonomous support teammate | Planned: intake, evidence tools, bounded model loop, durable follow-up, and verified closure                        |
+| Support workflow            | Reference-mode intake, evidence, cumulative approval threshold, expiring review, takeover and durable synthetic receipts |
+| AI support investigator     | Implemented Responses tool loop, clarification, evidence-bound proposals, timeout and fail-closed handoff; live-model validation pending |
 | Paytm integration           | Not implemented; depends on permitted product APIs and test access                                                  |
 
-The current AI path extracts policy fields. Generated investigations and explanations are part of the planned teammate work, not an existing capability. Financial authorization remains deterministic in both modes.
+Policy extraction and support investigation are separate optional AI paths. The investigator can read and propose, but has no refund-execution, finance-approval or policy-editing tools. Generated rationales are labelled proposals, not authoritative payment facts. Financial authorization remains deterministic in both modes.
 
 ## Run locally
 
@@ -71,7 +72,35 @@ The launcher creates a virtual environment on first use, installs dependencies, 
 .\.venv\Scripts\python.exe -m pip install -e './backend[dev]'
 ```
 
-Open the [dashboard](http://127.0.0.1:8000) or [API documentation](http://127.0.0.1:8000/docs). Click **Start 90-second demo** to run the existing split-payment and scorecard demonstration. It does not yet run an autonomous customer-support investigation.
+Open the [support workspace](http://127.0.0.1:8000) or [API documentation](http://127.0.0.1:8000/docs). The earlier policy dashboard and **Start 90-second demo** remain under [Technical labs](http://127.0.0.1:8000/labs).
+
+### Try the support workflow
+
+1. Click **Load demo payments**, then **New request**.
+2. Keep **Investigate my complaint**, select **Duplicate payment · ₹1,250**, enter `1250` and “Customer was charged twice; refund the duplicate.” Review the proposal and click **Confirm proposal & run checks**. It moves to **Refund pending**, then **Resolved** after a synthetic receipt (normally 8–10 seconds).
+3. Omit payment or amount to try clarification. Use **Add information** to supply the requested fields. A cancelled-order complaint for the **₹7,500** payment requires **Approve demo refund** after intent confirmation because cumulative refunds would cross ₹5,000. Both proposals and finance reviews expire after five minutes.
+4. Try another refund against a fully refunded capture: the guard blocks it. Split refunds also require approval once their cumulative total crosses the threshold.
+5. Use **Take over** to stop autonomous actions. Already accepted refunds still receive receipts, but automation will not close a human-owned request.
+
+Each capture has finite funds; loading fixtures again does not erase refunds. A new demo run can use a new `ARTHANIYAM_DATABASE_PATH`. Do not delete a database containing records you want to retain.
+
+The API automatically polls durable receipt jobs every two seconds. Jobs survive restarts. An optional standalone worker runs from `backend` with `python -m app.support.worker` and the same database environment. All receipts are synthetic, not bank-confirmed settlements. Refund-status requests can be investigated again after the underlying receipt arrives; they do not initiate another refund.
+
+The **Guided reference workflow** preserves the earlier explicitly classified intake. The default investigator is also offline unless configured below; its narrow keyword recognizer is not an LLM. It asks for clarification for unsupported or conflicting wording.
+
+### Enable the OpenAI investigator
+
+Set `OPENAI_API_KEY` in the repository-root `.env` (never commit it or paste it into a complaint), and optionally set `OPENAI_MODEL` to a model available to your account. The existing default is `gpt-5-mini`. Then run:
+
+```powershell
+.\scripts\start-demo.ps1 -InvestigatorMode openai
+```
+
+For direct Uvicorn startup, set `SUPPORT_INVESTIGATOR_MODE=openai` and `RAZORPAY_MODE=simulate`. The launcher defaults to `-InvestigatorMode reference`, regardless of the `.env` investigator mode. The UI shows the configured mode and whether a key is missing.
+
+OpenAI mode sends the complaint, follow-up messages and selected synthetic evidence to the Responses API. Use demo data only. The [official function-calling contract](https://developers.openai.com/api/docs/guides/function-calling) informs the strict schemas and tool-output loop. Limits: six model calls, 1,800 output tokens per call, a 45-second overall timeout and ten follow-up messages per case. Request storage is disabled (`store: false`); that is not a claim of zero provider retention. Private reasoning is neither persisted nor displayed. No model errors silently fall back to reference mode.
+
+Investigation claims expire after 60 seconds. After a process interruption, click **Investigate again** after that lease expires. New information or human takeover invalidates an outstanding result. Expired proposals and changed evidence must be investigated again before confirmation. The API is a local simulator without trusted user identity or tenant isolation; do not expose it publicly.
 
 Alternatively, with Docker available:
 
@@ -109,7 +138,7 @@ The optional existing payment adapter uses Razorpay test credentials. Its approv
 | Approval and delegation services | Represent bounded human permission and agent authority   |
 | Payment adapter                  | Simulator or verified test-provider execution            |
 | Evidence services                | Persist, hash, export, and replay records                |
-| HTML / CSS / JavaScript          | Dashboard, existing labs, and future support workspace   |
+| HTML / CSS / JavaScript          | Minimal support workspace and separate technical labs   |
 
 The planned teammate will call these services through scoped tools. It will not directly write ledger state, select its own permissions, or override a denial. See [implementation.md](implementation.md) for the build sequence and acceptance criteria.
 
@@ -119,7 +148,17 @@ The planned teammate will call these services through scoped tools. It will not 
 .\scripts\verify-project.ps1
 ```
 
-The last local verification before this documentation update passed 71 backend tests and frontend JavaScript syntax validation. That result covers the current prototype, not the planned support workflow or live integrations.
+The suite has 115 tests: the original 71, 18 support cases and 26 investigator cases. Coverage includes concurrency, restart recovery, stale proposals/approvals, clarification, malformed/unauthorized tool calls, timeouts, no-fallback behavior and provider error redaction. Verification checks both frontend scripts. Model transports are mocked for safety/contract tests; these are not live-model accuracy measurements.
+
+Run the seven-fixture investigation evaluation separately (no proposals are confirmed and no refunds are sent):
+
+```powershell
+.\.venv\Scripts\python.exe scripts/evaluate-investigator.py --mode reference
+# Explicit opt-in to paid API calls after configuring a key:
+.\.venv\Scripts\python.exe scripts/evaluate-investigator.py --mode openai --max-cases 7
+```
+
+The command prints per-fixture outcomes and exits nonzero on a failed expectation. Reference-mode results test the offline recognizer only. Record actual live results, including failures, before using them in the submission.
 
 The included fixed benchmark has seven attack scenarios and four benign controls. The guided scorecard combines those with 20 generated boundary cases. Report results with their fixture counts; synthetic measurements do not establish production fraud accuracy or customer impact.
 
@@ -134,15 +173,14 @@ Hashes help detect changes against a trusted record. They do not independently p
 
 ## Next delivery milestones
 
-1. Fix counterexample fidelity, concurrent refund admission, and unsafe dynamic HTML rendering; add regression coverage.
-2. Add the merchant support request model, evidence tools, and bounded AI investigation loop.
-3. Connect human approval, one-time execution, durable follow-up, and verified closure into one workflow.
-4. Present a minimal inbox, request detail, approval queue, and evidence view; retain technical labs under an advanced section.
-5. Adapt the UI and submission materials for the intended event, validate actual model behavior, and record an end-to-end demo.
-6. Confirm event eligibility and any Paytm integration requirements before submission.
+1. Configure an API key and evaluate the implemented investigator on real-model paraphrases, ambiguity and malicious instructions before claiming AI quality in the submission.
+2. Fix solver witness fidelity and audit dynamic rendering in the legacy technical labs. The new support workspace uses text nodes for untrusted values.
+3. Add trusted operator identity, merchant isolation, approval rejection/resume, customer updates and production provider reconciliation.
+4. Refresh the remaining submission materials, validate model behavior and record an end-to-end demo.
+5. Confirm event eligibility and any Paytm integration requirements before submission.
 
 ## Scope and documentation
 
 The prototype is intended for synthetic local demonstrations. Authentication, tenant isolation, trusted approver identities, complete crash recovery, and production provider operations remain future work. SQLite admission tests cover shared-database runtime instances, not multi-host consensus. The solver currently covers a bounded split-payment model, not formal proofs of every runtime rule.
 
-Existing [architecture](docs/architecture.md), [demo script](docs/judge-demo.md), [submission narrative](docs/submission.md), [judge Q&A](docs/judge-qa.md), and [checklist](docs/submission-checklist.md) describe the earlier buildathon package. Some wording and UI branding still reference that event; revising them is an explicit milestone in the new [implementation plan](implementation.md).
+Existing [architecture](docs/architecture.md), [demo script](docs/judge-demo.md), [submission narrative](docs/submission.md), [judge Q&A](docs/judge-qa.md), and [checklist](docs/submission-checklist.md) describe the earlier buildathon package. Their old event narrative still needs revision. The workspace and lab event labels have been updated; remaining work is tracked in the [implementation plan](implementation.md).

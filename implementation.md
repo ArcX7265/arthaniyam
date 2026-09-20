@@ -4,6 +4,31 @@
 
 This plan evolves the existing ArthaNiyam repository. It is a standalone product; no Resora application or service is required. The README describes what runs today. All proposed tools, entities, endpoints, and states below are targets unless explicitly marked existing.
 
+## Build checkpoint — 20 September 2026
+
+The support slice and **bounded model-driven investigator are implemented**. Offline reference mode runs without credentials. Live-model validation is pending because no OpenAI API key is configured locally; neither mode enables production payments.
+
+- `/` serves the minimal support inbox; `/labs` preserves the policy demonstration.
+- `backend/app/support/` supplies typed intake, stored evidence, server-selected support policy, exact evidence-bound approval, takeover, metrics and synthetic receipt jobs.
+- Four idempotently seeded payments demonstrate duplicate payment, cancelled order and accepted-return scenarios. Status enquiries inspect existing support refunds; uncertain evidence goes to review.
+- Support approvals expire after five minutes. Cumulative refunds per capture above ₹5,000 require review, including split requests. Changed policy, prior refunds or evidence invalidate a reviewed proposal without executing it.
+- Refund admission, cumulative check, refund record, refund audit event, approval consumption, case transition and receipt job are committed together. All accepted simulator refunds count against the capture immediately, including those waiting for a receipt. Independent service instances serialize through SQLite, not a process-local lock.
+- The API lifespan worker reconciles due synthetic receipts every two seconds, in batches of up to 25. A standalone worker is optional. Human takeover blocks further actions but permits receipt reconciliation without automatic closure.
+- The new UI renders untrusted strings as text. The legacy labs' dynamic rendering remains a separate hardening task.
+- The investigator adds 26 regression cases, bringing the total to 115. Mocked model-contract tests are not evidence of live-model accuracy. Provider dispatch recovery and real bank settlement remain outside the implemented scope.
+
+### Investigator implementation
+
+`support/agent.py` implements a Responses function-calling loop with strict, validated schemas and only five tools: `get_request`, `get_payment_evidence`, `propose_resolution`, `ask_for_information`, and `escalate_to_human`. Both read tools must run before a proposal; the proposal must cite the exact snapshot fingerprint. The model cannot choose payment scope, amount, policy, approval, execution outcome or arbitrary tools. The operator supplies the payment and amount and confirms the proposed complaint type before the deterministic support service runs.
+
+`support/investigations.py` persists typed intake, bounded follow-up history, proposal records and 60-second investigation leases in existing case storage. Network calls run outside database transactions. Concurrent runs, changed evidence, human takeover, replaced input and late results are checked before accepting a proposal. Confirmation rechecks expiry and evidence atomically; repeated confirmation returns the same result. Finance review remains a separate transition. Unexpected model behavior fails closed with a useful visible reason and no offline fallback.
+
+Model budget: six requests, 1,800 output tokens per request, 45-second overall timeout. Conversations accept at most ten follow-ups. Encrypted reasoning/output items are kept only in memory for API continuation; the UI persists tool names and concise proposals, not private reasoning. The reference path is explicitly a narrow keyword implementation. All model/provider claims require subsequent live evaluation.
+
+Implemented API prefix: `/api/v1/support`. Endpoints include `POST /demo/seed`, `GET /payments`, `GET /metrics`, `GET|POST /requests`, `GET /requests/{id}`, `POST /requests/{id}/investigate|approve|takeover`, `GET /investigator/capabilities`, `POST /investigations`, `POST /requests/{id}/messages`, and `POST /requests/{id}/confirm-proposal`. All support endpoints are disabled outside simulator mode. Cross-origin browser mutations are rejected; this is not authentication. Keep the app loopback-only.
+
+**Next validation:** configure credentials and run a live-model evaluation of paraphrases, ambiguous intent, missing details and injection attempts. Still pending: trusted identity/tenant scope, approval rejection and resume, real provider outbox/reconciliation, an explicit support evidence export, solver witness correction and legacy lab rendering hardening. Case/evidence JSON and a synthetic receipt worker are an MVP, not the complete normalized production model below. The core refund journal calls simulator acceptance `executed`; the support case stays `refund_pending` until a synthetic receipt arrives. No model or customer text directly authorizes money movement.
+
 ## 1. Product and track fit
 
 Intended event: Paytm Build for India AI Hackathon, Mumbai. Intended track: Autonomous AI Teammates.
@@ -16,7 +41,7 @@ Proposed pitch: “ArthaNiyam investigates merchant refund requests, completes p
 
 Before final submission, confirm the official event edition, deadline, reuse policy for an existing project, judging criteria, and any required APIs. Describe pre-existing work and new hackathon work accurately. The supplied screenshot does not establish these rules, and track fit is a proposal rather than organiser approval.
 
-## 2. Verified starting point
+## 2. Baseline before the support build
 
 | Area             | Existing implementation                                     | Remaining work                                                          |
 | ---------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -29,7 +54,7 @@ Before final submission, confirm the official event edition, deadline, reuse pol
 | Evidence         | Audit chains and portable verifiers                         | Link request, evidence, policy decision, approval, and provider outcome |
 | Delivery         | Dashboard, 71-test suite, CI configuration, Docker, scripts | Support workspace, integrated demo, updated submission materials        |
 
-The existing model integration extracts policy fields. Runtime explanations are currently generated by application code. A general investigation agent and durable support-request lifecycle are not implemented. The most recent local verification passed the existing 71 tests; it does not certify the new workflow.
+This table records the pre-build baseline (71 tests). See the checkpoint above for completed support and investigator work. Model-generated proposals are separate from authoritative server-generated execution outcomes.
 
 ## 3. MVP boundaries
 
@@ -172,9 +197,9 @@ After an uncertain provider response, retain the reservation and query the same 
 
 The current solver witness repeats one invoice ID. Generate distinct invoices for a split-payment example, honor the policy's vendor/category restrictions, and state exactly which fields are modeled. Replaying the witness should demonstrate the intended correlation failure rather than fail earlier for a duplicate invoice or disallowed vendor. “No counterexample within the bound” must remain scoped to the tested model.
 
-### Concurrent refunds
+### Concurrent refunds — simulator admission implemented
 
-Move cumulative checks and reservation insertion into one shared-database write transaction. Include completed and in-flight amounts:
+The simulator now performs cumulative checks, refund insertion and audit recording in one shared-database write transaction. Support admission also records the case transition and durable synthetic receipt job atomically. Accepted simulator refunds count toward conservation even before the receipt. A future real provider adapter still needs explicit reservations and uncertain-outcome recovery:
 
 ```text
 completed refunds + active refund reservations + proposed amount <= verified capture

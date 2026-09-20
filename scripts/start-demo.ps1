@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1024, 65535)]
-    [int]$Port = 8000
+    [int]$Port = 8000,
+    [ValidateSet("reference", "openai")]
+    [string]$InvestigatorMode = "reference"
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,9 +24,11 @@ if (-not (Test-Path -LiteralPath $pythonExecutable)) {
 
 $env:RAZORPAY_MODE = "simulate"
 $env:POLICY_COMPILER_MODE = "reference"
+$env:SUPPORT_INVESTIGATOR_MODE = $InvestigatorMode
 $env:PYTHONDONTWRITEBYTECODE = "1"
 
 Write-Host "ArthaNiyam demo starting at http://127.0.0.1:$Port" -ForegroundColor Green
+Write-Host "Support investigator: $InvestigatorMode; all payments remain simulated." -ForegroundColor DarkGray
 Write-Host "Press Ctrl+C to stop the server." -ForegroundColor DarkGray
 
 Push-Location $backendRoot
