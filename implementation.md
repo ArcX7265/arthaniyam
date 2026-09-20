@@ -15,7 +15,7 @@ The support slice and **bounded model-driven investigator are implemented**. Oll
 - Refund admission, cumulative check, refund record, refund audit event, approval consumption, case transition and receipt job are committed together. All accepted simulator refunds count against the capture immediately, including those waiting for a receipt. Independent service instances serialize through SQLite, not a process-local lock.
 - The API lifespan worker reconciles due synthetic receipts every two seconds, in batches of up to 25. A standalone worker is optional. Human takeover blocks further actions but permits receipt reconciliation without automatic closure.
 - The new UI renders untrusted strings as text. The legacy labs' dynamic rendering remains a separate hardening task.
-- The investigator has 39 regression cases, bringing the total to 128. Mocked model-contract tests are not evidence of live-model accuracy. Provider dispatch recovery and real bank settlement remain outside the implemented scope.
+- The investigator has 49 regression cases, bringing the total to 138. Mocked model-contract tests are not evidence of live-model accuracy. Provider dispatch recovery and real bank settlement remain outside the implemented scope.
 
 ### Investigator implementation
 
@@ -26,6 +26,8 @@ The support slice and **bounded model-driven investigator are implemented**. Oll
 Model budget: six requests. OpenAI uses 1,800 output tokens per request and a 45-second overall timeout. Ollama uses 900 output tokens per request, 120 seconds per HTTP call and 180 seconds overall. Conversations accept at most ten follow-ups. Encrypted OpenAI reasoning/output items are kept only in memory for API continuation; the UI persists tool names and concise proposals, not private reasoning. The reference path is explicitly a narrow keyword implementation.
 
 The Ollama adapter sends JSON-schema-constrained requests to the fixed local `/api/chat` endpoint with temperature zero and streaming disabled. It translates each structured tool selection into the existing model loop; shared schema, evidence-fingerprint and operator-confirmation checks remain authoritative. Missing models, connection failures, truncation and invalid tool arguments return safe errors without provider text or an automatic paid fallback. `OLLAMA_MODEL` selects an installed model; the default is `llama3.2:3b`. The launcher defaults to Ollama while the separate policy compiler stays in reference mode. Existing Docker Compose remains reference-only.
+
+A deterministic preflight handles two narrow boundaries before provider calls. Clear tracking-only wording creates an evidence-bound `refund_status` proposal without requiring an amount or creating a refund. Wording that explicitly asks to bypass rules, checks, verification or approval is handed to a human with no proposal. Ambiguous and ordinary complaints still reach the selected model. These gates reduce small-model variance; they are not a general prompt-injection detector.
 
 Implemented API prefix: `/api/v1/support`. Endpoints include `POST /demo/seed`, `GET /payments`, `GET /metrics`, `GET|POST /requests`, `GET /requests/{id}`, `POST /requests/{id}/investigate|approve|takeover`, `GET /investigator/capabilities`, `POST /investigations`, `POST /requests/{id}/messages`, and `POST /requests/{id}/confirm-proposal`. All support endpoints are disabled outside simulator mode. Cross-origin browser mutations are rejected; this is not authentication. Keep the app loopback-only.
 

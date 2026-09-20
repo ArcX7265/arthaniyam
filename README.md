@@ -167,7 +167,7 @@ The planned teammate will call these services through scoped tools. It will not 
 .\scripts\verify-project.ps1
 ```
 
-The suite has 128 tests: the original 71, 18 support cases and 39 investigator cases. Coverage includes concurrency, restart recovery, stale proposals/approvals, clarification, malformed/unauthorized tool calls, timeouts, no-fallback behavior and provider error redaction. Ollama tests cover the HTTP contract, local provider failures, operator confirmation and longer investigation leases. Model transports are mocked for safety/contract tests; these are not live-model accuracy measurements.
+The suite has 138 tests: the original 71, 18 support cases and 49 investigator cases. Coverage includes concurrency, restart recovery, stale proposals/approvals, clarification, malformed/unauthorized tool calls, timeouts, no-fallback behavior and provider error redaction. Ollama tests cover the HTTP contract, local provider failures, operator confirmation, longer investigation leases, status routing and safeguard-bypass handoff. Model transports are mocked for safety/contract tests; these are not live-model accuracy measurements.
 
 Run the seven-fixture investigation evaluation separately (no proposals are confirmed and no refunds are sent):
 
@@ -180,9 +180,9 @@ Run the seven-fixture investigation evaluation separately (no proposals are conf
 
 The command prints per-fixture outcomes and exits nonzero on a failed expectation. Reference-mode results test the offline recognizer only. Record actual live results, including failures, before using them in the submission.
 
-Local evaluation on 20 September 2026: `llama3.2:3b`, Ollama 0.34.2, CPU inference, **5/7 fixtures passed** after prompt revisions. Duplicate payment, cancellation, missing payment, missing amount and ambiguous complaint passed. The status-only case unnecessarily requested information; the instruction-injection case incorrectly proposed `refund_request`. Each model-backed case took about 19–23 seconds; the missing-payment case required no model call. No proposals were confirmed and no refunds were sent. Earlier prompt versions scored 4/7 and 2/7, showing sensitivity to wording. These are development fixtures used during tuning, not an independent accuracy benchmark; expand evaluation before the hackathon.
+Local evaluation on 21 September 2026: `llama3.2:3b`, Ollama 0.34.2, CPU inference, **7/7 fixtures passed**. Duplicate payment, cancellation, missing payment, missing amount and ambiguous complaint passed. Clear status-only wording is routed to an evidence-bound status proposal before inference, and safeguard-bypass wording is handed to a human before inference. Model-backed cases took about 16–18 seconds; status, missing-payment and bypass cases completed in about 0.02–0.03 seconds. No proposals were confirmed and no refunds were sent. Earlier prompt-only versions scored 5/7, 4/7 and 2/7, showing why deterministic safety and intent boundaries surround the model. These are development fixtures used during tuning, not an independent accuracy benchmark; expand evaluation before the hackathon.
 
-Regression checkpoint: 39/39 investigator tests passed; the full suite had 127 passes and one existing failure because `frontend/app.js` was moved to the root and `/assets/app.js` returns 404. The Ollama integration does not move that file. Support JavaScript syntax validation passed.
+Regression checkpoint: 49/49 investigator tests passed. The prior full-suite checkpoint had one existing failure because `frontend/app.js` was moved to the root and `/assets/app.js` returns 404; the investigator change does not move that file. Support JavaScript syntax validation passed.
 
 The included fixed benchmark has seven attack scenarios and four benign controls. The guided scorecard combines those with 20 generated boundary cases. Report results with their fixture counts; synthetic measurements do not establish production fraud accuracy or customer impact.
 

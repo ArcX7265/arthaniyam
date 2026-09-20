@@ -249,6 +249,9 @@ class InvestigatorAgent:
         if not context["request"]["payment_id"]:
             return InvestigationResult("question", {"question": "Which payment is this about? Select the exact payment before I investigate.", "missing_fields": ["payment_id"]})
         try:
+            preflight = self._preflight(session)
+            if preflight:
+                return preflight
             if self.mode == "reference":
                 return self._reference(session)
             return asyncio.run(asyncio.wait_for(self._model_loop(session), timeout=self.timeout))
@@ -259,6 +262,40 @@ class InvestigatorAgent:
         except Exception:
             # No secrets, provider text or private model reasoning in the UI/log.
             return InvestigationResult("error", {"reason": "AI investigation failed safely. No action was taken; retry or hand off."}, session.trace)
+
+    def _preflight(self, session: ToolSession) -> InvestigationResult | None:
+        """Handle narrow safety/intent boundaries before any provider call."""
+        text = " ".join([
+            session.context["request"]["message"],
+            *[message["message"] for message in session.context["messages"]],
+        ]).lower()
+        bypass = (
+            r"\b(?:ignore|disregard|override|bypass|skip)\b.{0,60}"
+            r"\b(?:rules?|instructions?|polic(?:y|ies)|checks?|verification|approvals?|safeguards?)\b"
+            r"|\bwithout\b.{0,30}\b(?:checking|verification|approval|review)\b"
+        )
+        if re.search(bypass, text):
+            return InvestigationResult("handoff", {
+                "reason": "The request asks to bypass required safeguards. A human must review it; no action was taken."
+            })
+
+        status_query = (
+            r"\b(?:where|when|track|tracking|status|progress|pending)\b.{0,50}\brefund\b"
+            r"|\brefund\b.{0,50}\b(?:where|when|track|tracking|status|progress|arriv(?:e|ed)|received|credited|pending)\b"
+        )
+        new_refund = (
+            r"\b(?:issue|initiate|create|process|send|give|start|request)\b.{0,35}\brefund\b"
+            r"|\brefund\b.{0,25}\b(?:now|again|immediately)\b"
+        )
+        if re.search(status_query, text) and not re.search(new_refund, text):
+            session.invoke("get_request", "{}")
+            session.invoke("get_payment_evidence", "{}")
+            return session.invoke("propose_resolution", json.dumps({
+                "kind": "refund_status",
+                "evidence_fingerprint": session.context["evidence_fingerprint"],
+                "rationale": "The customer is asking to track an existing refund. The selected payment evidence will determine its recorded status; no new refund is requested.",
+            }))[1]
+        return None
 
     async def _model_loop(self, session: ToolSession) -> InvestigationResult:
         if self.transport is None:

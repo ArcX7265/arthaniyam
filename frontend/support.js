@@ -5,6 +5,7 @@ const labels = {new: "New", investigating: "Investigating", waiting_information:
 const kinds = {duplicate_payment: "Duplicate payment", cancelled_order: "Cancelled order", refund_request: "Return / partial refund", refund_status: "Refund status", other: "Other complaint"};
 const money = (paise) => new Intl.NumberFormat("en-IN", {style: "currency", currency: "INR"}).format(paise / 100);
 let cases = [], payments = [], selected = null, busy = false, refreshing = false, retry = null;
+let investigatorMode = "reference";
 let listSignature = "", detailSignature = "";
 let dialogCaseId = null;
 function caseTitle(c) {return c.intake === "investigator" && c.request.kind === "other" ? "Complaint investigation" : kinds[c.request.kind];}
@@ -154,7 +155,10 @@ $("request-form").onsubmit = async event => {
   const fingerprint = JSON.stringify([endpoint, body]);
   if (!retry || retry.fingerprint !== fingerprint) retry = {fingerprint, key: crypto.randomUUID()};
   busy = true; const submit = event.target.querySelector("button[type=submit]"); submit.disabled = true;
-  $("form-error").textContent = "Investigating… This can take up to 45 seconds in OpenAI mode.";
+  $("form-error").textContent = guided ? "Checking the request against the demo rules…" :
+    investigatorMode === "ollama" ? "Investigating with local Llama 3.2… This may take up to three minutes." :
+    investigatorMode === "openai" ? "Investigating with OpenAI… This can take up to 45 seconds." :
+    "Investigating with the offline reference rules…";
   try {
     const result = await api(endpoint, {...body, idempotency_key: retry.key});
     selected = result.case_id; retry = null; $("request-dialog").close(); $("request-form").reset();
@@ -163,6 +167,7 @@ $("request-form").onsubmit = async event => {
 };
 refresh().catch(error => {$("message").textContent = error.message;});
 api("/investigator/capabilities").then(cap => {
+  investigatorMode = cap.mode;
   const mode = cap.mode === "ollama" ? `Local AI investigator (${cap.model})` : cap.mode === "openai" ? `OpenAI investigator (${cap.model})${cap.configured ? "" : " — API key not configured"}` : "Offline reference investigator — no live model";
   $("investigator-mode").textContent = `${mode}. Synthetic payments only; no real money moves. Demo approvals are not authenticated finance access.`;
   $("data-notice").textContent = cap.mode === "ollama" ? "Complaints and demo evidence are processed by Ollama on this computer. Keep Ollama running. No paid API is used." : cap.mode === "openai" ? "AI mode sends this complaint, follow-up messages and selected synthetic payment evidence to OpenAI. Use demo data only. Guided mode stays offline." : "Investigation uses an offline keyword reference. Select Ollama for local AI understanding.";
