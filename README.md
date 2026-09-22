@@ -76,6 +76,8 @@ Open the [support workspace](http://127.0.0.1:8000) or [API documentation](http:
 
 ### Try the support workflow
 
+The four scenario shortcuts seed the synthetic payments and open a prefilled request for review. They do not submit or approve anything automatically. Expand **How it works** for the four-step overview. Normal investigation progress appears separately from errors; the model label comes from the configured backend.
+
 1. Click **Load demo payments**, then **New request**.
 2. Keep **Investigate my complaint**, select **Duplicate payment · ₹1,250**, enter `1250` and “Customer was charged twice; refund the duplicate.” Review the proposal and click **Confirm proposal & run checks**. It moves to **Refund pending**, then **Resolved** after a synthetic receipt (normally 8–10 seconds).
 3. Omit payment or amount to try clarification. Use **Add information** to supply the requested fields. A cancelled-order complaint for the **₹7,500** payment requires **Approve demo refund** after intent confirmation because cumulative refunds would cross ₹5,000. Both proposals and finance reviews expire after five minutes.
@@ -182,7 +184,23 @@ The command prints per-fixture outcomes and exits nonzero on a failed expectatio
 
 Local evaluation on 21 September 2026: `llama3.2:3b`, Ollama 0.34.2, CPU inference, **7/7 fixtures passed**. Duplicate payment, cancellation, missing payment, missing amount and ambiguous complaint passed. Clear status-only wording is routed to an evidence-bound status proposal before inference, and safeguard-bypass wording is handed to a human before inference. Model-backed cases took about 16–18 seconds; status, missing-payment and bypass cases completed in about 0.02–0.03 seconds. No proposals were confirmed and no refunds were sent. Earlier prompt-only versions scored 5/7, 4/7 and 2/7, showing why deterministic safety and intent boundaries surround the model. These are development fixtures used during tuning, not an independent accuracy benchmark; expand evaluation before the hackathon.
 
-Regression checkpoint: 49/49 investigator tests passed. The prior full-suite checkpoint had one existing failure because `frontend/app.js` was moved to the root and `/assets/app.js` returns 404; the investigator change does not move that file. Support JavaScript syntax validation passed.
+Regression checkpoint: **138/138 backend tests passed**, including 49 investigator tests, after restoring the served `frontend/app.js` from the existing root file. Both frontend scripts passed syntax validation. The original root copy is preserved.
+
+The API walkthrough passed **4/4 workflows with local Ollama**, including intent confirmation, idempotent retry, separate finance approval and background synthetic receipts. It created ₹8,750 of simulated refunds only in a disposable database. Run it with:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/verify-support-demo.py --mode ollama
+```
+
+Additional Hindi/Hinglish evaluation passed **3/4 examples**; the Hindi refund-status case asked an unnecessary question. This is experimental coverage, not general multilingual support:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/evaluate-investigator.py --mode ollama --suite languages
+# Core plus language cases:
+.\.venv\Scripts\python.exe scripts/evaluate-investigator.py --mode ollama --suite all
+```
+
+See [the dated validation report](docs/validation.md) for observations and limitations. Browser visual QA, screenshots and video remain pending because automated browser approval was unavailable during this run.
 
 The included fixed benchmark has seven attack scenarios and four benign controls. The guided scorecard combines those with 20 generated boundary cases. Report results with their fixture counts; synthetic measurements do not establish production fraud accuracy or customer impact.
 
@@ -200,11 +218,11 @@ Hashes help detect changes against a trusted record. They do not independently p
 1. Expand the local-model evaluation with unseen paraphrases, ambiguity and malicious instructions before claiming AI quality in the submission. API credits are optional.
 2. Fix solver witness fidelity and audit dynamic rendering in the legacy technical labs. The new support workspace uses text nodes for untrusted values.
 3. Add trusted operator identity, merchant isolation, approval rejection/resume, customer updates and production provider reconciliation.
-4. Refresh the remaining submission materials, validate model behavior and record an end-to-end demo.
+4. Visually review the updated demo, capture screenshots and record the prepared 90-second script.
 5. Confirm event eligibility and any Paytm integration requirements before submission.
 
 ## Scope and documentation
 
 The prototype is intended for synthetic local demonstrations. Authentication, tenant isolation, trusted approver identities, complete crash recovery, and production provider operations remain future work. SQLite admission tests cover shared-database runtime instances, not multi-host consensus. The solver currently covers a bounded split-payment model, not formal proofs of every runtime rule.
 
-Existing [architecture](docs/architecture.md), [demo script](docs/judge-demo.md), [submission narrative](docs/submission.md), [judge Q&A](docs/judge-qa.md), and [checklist](docs/submission-checklist.md) describe the earlier buildathon package. Their old event narrative still needs revision. The workspace and lab event labels have been updated; remaining work is tracked in the [implementation plan](implementation.md).
+The current support submission pack includes the [architecture diagram](docs/support-architecture.md), [90-second demo script and capture plan](docs/judge-demo.md), [submission narrative](docs/submission.md), [judge Q&A](docs/judge-qa.md), [validation report](docs/validation.md), and [checklist](docs/submission-checklist.md). The [earlier control-plane architecture](docs/architecture.md) remains available for technical follow-up. Recording, publishing and organiser submission are pending; remaining product work is tracked in the [implementation plan](implementation.md).

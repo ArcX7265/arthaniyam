@@ -6,6 +6,15 @@ This plan evolves the existing ArthaNiyam repository. It is a standalone product
 
 ## Build checkpoint — 20 September 2026
 
+### Demo-readiness update — 21 September 2026
+
+- Restored the technical-labs asset at `frontend/app.js`, preserving the existing root copy. All 138 backend tests and both frontend syntax checks pass.
+- Added four prefilled scenario shortcuts and a compact How it works disclosure. Progress has a separate status region from errors, and the local model name follows backend configuration.
+- Added `scripts/verify-support-demo.py`: all four workflows passed with local Ollama through HTTP, confirmation, separate finance approval, idempotent retry and synthetic receipt reconciliation. Test data lives in a disposable database.
+- Added Hindi/Hinglish evaluation (`--suite languages`): 3/4 examples passed; Hindi refund-status tracking still asks for clarification. The original seven core fixtures remain a separate suite.
+- Updated submission narrative, support architecture, judge Q&A, 90-second recording script, capture plan and checklist. See `docs/validation.md` for dated measurements.
+- Browser visual QA, screenshots and video are pending because the automatic approval reviewer blocked browser access due to its usage limit. No public deployment, push or submission was performed.
+
 The support slice and **bounded model-driven investigator are implemented**. Ollama supports local Llama 3.2 without API credits; OpenAI remains optional and reference mode uses offline keywords. No mode enables production payments. Local validation results are recorded in the README.
 
 - `/` serves the minimal support inbox; `/labs` preserves the policy demonstration.

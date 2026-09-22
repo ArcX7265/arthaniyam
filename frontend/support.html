@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ArthaNiyam — Merchant support</title>
   <meta name="description" content="Evidence-led merchant refund support, protected by deterministic financial controls." />
-  <link rel="stylesheet" href="/assets/support.css?v=investigator-1" />
-  <script src="/assets/support.js?v=investigator-1" defer></script>
+  <link rel="stylesheet" href="/assets/support.css?v=judge-2" />
+  <script src="/assets/support.js?v=judge-2" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to requests</a>
@@ -14,6 +14,8 @@
   <main id="main-content">
     <div class="heading"><div><p class="eyebrow">MERCHANT SUPPORT</p><h1>Resolve with confidence.</h1><p>One place to investigate, approve and track refund requests.</p></div><button id="new-request" type="button">New request</button></div>
     <p class="notice" id="investigator-mode" role="status">Checking investigator mode… Payments and confirmations are synthetic. No real money moves.</p>
+    <details class="how-it-works"><summary>How it works</summary><ol><li><strong>Understand</strong><span>Describe the complaint and select its payment.</span></li><li><strong>Investigate</strong><span>Read payment evidence and propose the next step.</span></li><li><strong>Review</strong><span>Confirm intent. Server rules check limits and approval.</span></li><li><strong>Track</strong><span>Follow the simulated refund to its receipt.</span></li></ol><p>Local AI handles open-ended complaints. Clear status enquiries and known safeguard-bypass wording use rules. Every refund remains subject to server checks.</p></details>
+    <section class="demo-scenarios" aria-label="Try a demo scenario"><span>Try a scenario</span><div><button type="button" class="quiet" data-scenario="duplicate">Duplicate · ₹1,250</button><button type="button" class="quiet" data-scenario="cancellation">Approval · ₹7,500</button><button type="button" class="quiet" data-scenario="status">Track a refund</button><button type="button" class="quiet" data-scenario="bypass">Human handoff</button></div><small>Opens a prefilled demo request for you to review. Existing payment history is preserved.</small></section>
     <p id="message" role="status" aria-live="polite"></p>
     <section id="metrics" aria-label="Support outcomes" class="metrics"></section>
     <div class="workspace">
@@ -35,7 +37,7 @@
       <div id="guided-fields" hidden><label for="kind">Complaint type</label><select id="kind"><option value="duplicate_payment">Duplicate payment</option><option value="cancelled_order">Cancelled order refund</option><option value="refund_request">Accepted return / partial refund</option><option value="refund_status">Track an existing refund</option><option value="other">Other / needs investigation</option></select></div>
       <label for="amount">Requested refund (INR)</label><input id="amount" type="text" inputmode="decimal" pattern="[0-9]+(\.[0-9]{1,2})?" placeholder="1250.00" /><small>Optional for investigation. Before a refund can be proposed, enter its exact amount here; the model cannot choose it.</small>
       <label for="complaint">What happened?</label><textarea id="complaint" rows="3" minlength="3" maxlength="2000" required placeholder="The customer was charged twice for the same order."></textarea>
-      <p id="data-notice" class="notice"></p><p id="form-error" role="alert"></p><button type="submit" id="submit-request">Investigate request</button>
+      <p id="data-notice" class="notice"></p><p id="form-status" role="status" aria-live="polite"></p><p id="form-error" role="alert"></p><button type="submit" id="submit-request">Investigate request</button>
     </form>
   </dialog>
 </body>

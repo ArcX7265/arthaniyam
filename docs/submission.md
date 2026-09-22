@@ -1,117 +1,45 @@
-# ArthaNiyam — buildathon submission
-
-## One-line pitch
-
-ArthaNiyam is a financial policy control plane that verifies what autonomous
-agents intend to do, detects unsafe action sequences that ordinary API checks
-miss, and permits money movement only after shared financial invariants hold.
+# ArthaNiyam — Paytm hackathon submission draft
 
 ## Track
 
-Open Innovation.
+Autonomous AI Teammates, based on the supplied track description. Confirm official eligibility, reuse rules, deadlines and mandatory integrations before submission.
+
+## One-line pitch
+
+An AI teammate that investigates merchant refund complaints, gathers evidence, asks for missing details and carries approved requests through a tracked simulated refund workflow.
 
 ## Problem
 
-Autonomous agents can call payment APIs correctly and still create an unsafe
-financial outcome. Two payments may each sit below an approval threshold while
-their combined purpose exceeds it. Multiple agents may reserve the same budget,
-reuse an invoice, multiply delegated authority, replay an approval, or refund
-more than was captured.
+A merchant handling a complaint must connect the customer's account with order, capture and refund history. The proposed remedy must fit captured funds, earlier refunds and approval rules. Repeated or concurrent requests make those checks harder.
 
-Traditional gateways mostly evaluate one request at a time. The dangerous
-property often belongs to a sequence of individually valid requests.
+## What we built
 
-## Solution
+Local Llama 3.2 reads scoped evidence and proposes a complaint classification, clarification or handoff. The operator supplies the payment and amount and confirms the proposal. Server checks decide whether a simulated refund is eligible, blocked or requires separate finance approval. A durable worker follows accepted refunds to synthetic receipts.
 
-ArthaNiyam adds a verification and enforcement layer before payment execution:
+The minimal inbox shows complaints, evidence, proposed next steps and event history. Four shortcuts demonstrate duplicate payments, cancelled-order approval, refund tracking and human handoff. The earlier policy demonstrations remain at /labs.
 
-1. A finance owner describes a constrained policy in plain language.
-2. The policy becomes a typed, reviewable model.
-3. Z3 searches bounded action sequences for a counterexample.
-4. The runtime guard compares each action with durable shared state.
-5. Permitted money is atomically reserved before provider execution.
-6. Sensitive actions require an expiring approval bound to the exact action.
-7. Every decision enters a tamper-evident audit chain.
-8. Judges can download and independently verify the resulting evidence.
+## Distinctive features
 
-## Why it is more than an if/else gateway
+- Limits consider earlier and pending refunds against the same capture, including split requests.
+- Approval is tied to exact evidence; changes or expiry force another review.
+- Model tools cannot execute refunds or grant approval.
+- Idempotency and atomic SQLite admission prevent repeated confirmation from creating duplicate refunds.
+- Local inference avoids paid API calls. Recognised status enquiries and explicit safeguard-bypass wording use rules.
 
-An ordinary condition answers, “Is this request smaller than INR 10,000?”
+## Evidence and limits
 
-ArthaNiyam answers, “If this request is added to everything already reserved,
-committed, delegated, approved, captured, and refunded, can any financial
-invariant be violated?”
+See [validation results](validation.md) for dated measurements. The core development suite passed seven fixtures, three without inference. New Hindi/Hinglish evaluation passed three of four examples; Hindi refund tracking still needs work. These are not independent production-accuracy measurements.
 
-That requires temporal correlation, conserved quantities, atomic admission,
-formal counterexample search, and replayable evidence—not only additional
-conditions.
+Payments and receipts are simulated. There is no Paytm API integration, trusted operator authentication or merchant isolation. Finance approval is a simulated role. The narrow regex gate is not a general prompt-injection defence; deterministic financial controls remain necessary.
 
-## Standout features
+## Intended impact
 
-- Bounded formal verification with concrete, replayable counterexamples
-- Stateful correlation across vendor, purpose, and invoice dimensions
-- Atomic multi-instance reservations against a shared ledger
-- Conserved delegated authority graph
-- Single-use, exact-action approval capabilities
-- Captured-funds and cumulative-refund conservation
-- Counterfactual policy rollout before deployment
-- Tamper-evident audit chain and portable offline verification
-- Mixed adversarial/benign evaluation and seeded boundary fuzzing
-- One-click guided demo and persisted judge scorecard
+Less manual evidence collection, faster triage and fewer repeated refund actions are hypotheses to validate with merchants. A pilot should measure resolution time, reviewer corrections, escalation rate, repeat contacts and incorrect actions against a human-only baseline. No customer-impact claim has been measured yet.
 
-## Measured prototype evidence
+## Scaling plan
 
-| Measurement | Result | Scope |
-|---|---:|---|
-| Automated tests | 71 passing | Backend, API, persistence, security invariants, evidence, and UI contracts |
-| Judge readiness checks | 6/6 | Symbolic, fixed, generated, concurrency, and evidence checks |
-| One-click judge cases | 31 | 11 fixed scenarios plus 20 generated boundary cases |
-| Fixed attack recall | 100% | Seven synthetic attacks |
-| Fixed false-positive rate | 0% | Four synthetic benign controls |
-| Multi-instance budget burst | 5 admitted, 7 denied | Twelve simultaneous INR 10,000 requests competing for INR 50,000 |
-| Portable evidence | Valid | API verifier and Python standard-library verifier |
+Add authenticated tenant scope and roles, a production transactional database, durable queues, provider idempotency/reconciliation, observability and unseen multilingual evaluations. Pilot with an authorised provider sandbox before real-money use. Current concurrency tests cover shared SQLite, not multi-host consensus.
 
-These measurements describe the included synthetic suite. They are evidence of
-prototype behavior, not estimates of performance on real fraud distributions.
+## Fields to complete before submission
 
-## Real-world impact
-
-The pattern applies anywhere software agents can create financial commitments:
-procurement, accounts payable, subscription recovery, marketplace refunds,
-treasury operations, and agent-to-agent commerce. The immediate value is not
-another agent that recommends an action; it is an enforceable boundary shared
-by every agent that can move money.
-
-## Scalability
-
-The current prototype coordinates independently locked runtime instances using
-transactional SQLite admission. Its typed policy, runtime decision, audit, and
-portable evidence formats do not depend on SQLite. A scaled deployment can move
-the repository boundary to PostgreSQL or another transactional ledger while
-keeping the verification and policy semantics unchanged.
-
-## Safety boundary
-
-- Live Razorpay keys are rejected.
-- All demos use the offline simulator or Razorpay Test Mode.
-- Model-generated policy output never directly authorizes money.
-- Formal verification is bounded and reported as such.
-- Authenticated human identity, production compliance, multi-host consensus,
-  monitoring, and external audit notarization remain future work.
-
-## Technology
-
-- FastAPI and Pydantic for typed API and policy contracts
-- Z3 for bounded counterexample search
-- SQLite WAL transactions for durable prototype state and atomic admission
-- Razorpay-compatible simulator and Test Mode adapter
-- Vanilla HTML, CSS, and JavaScript for the zero-build dashboard
-- Pytest for deterministic and adversarial verification
-- Docker, Compose, and GitHub Actions for reproducibility
-
-## Demo
-
-Run `scripts/start-demo.ps1`, open `http://127.0.0.1:8000`, and click **Start
-90-second demo**. The guided flow shows the stateless failure, ArthaNiyam’s
-stateful decision, and the independent scorecard. The detailed walkthrough is
-in [judge-demo.md](judge-demo.md).
+Team names, contact details, disclosure of pre-existing ArthaNiyam work, confirmed public repository URL, video URL and any hosted-demo link. No public deployment, push or submission was performed. Use [the demo script](judge-demo.md) and [checklist](submission-checklist.md).

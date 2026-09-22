@@ -1,5 +1,7 @@
 # ArthaNiyam architecture
 
+For the current hackathon customer-support workflow, see [Merchant support architecture](support-architecture.md). The control-plane architecture below describes the earlier technical labs and shared financial-enforcement components.
+
 ## System view
 
 ```mermaid

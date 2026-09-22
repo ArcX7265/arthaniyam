@@ -1,54 +1,34 @@
 # Submission checklist
 
-## Repository — complete
+## Prepared locally
 
-- [x] Clear README and one-command Windows startup
-- [x] Container and Compose configuration
-- [x] GitHub Actions verification workflow
-- [x] `.env` and generated databases excluded from Git
-- [x] Live Razorpay keys rejected by application settings
-- [x] Architecture and trust-boundary documentation
-- [x] Judge-facing submission narrative
-- [x] Judge Q&A and technical defense sheet
-- [x] Automated tests and reproducible evidence
+- [x] Ollama demo and startup instructions.
+- [x] Restore the technical-labs JavaScript asset.
+- [x] Four scenario shortcuts and How it works.
+- [x] Separate loading status from error messages.
+- [x] Core evaluator plus Hindi/Hinglish suite.
+- [x] API walkthrough for confirmation, approval and synthetic receipts.
+- [x] Problem statement and draft track narrative.
+- [x] Support architecture diagram and boundaries.
+- [x] Recording script, screenshot plan and judge Q&A.
 
-## Demo — complete in product
+## Pending
 
-- [x] One-click 90-second guided flow
-- [x] Local gateway versus ArthaNiyam comparison
-- [x] Concrete correlated split-payment result
-- [x] One-click judge scorecard
-- [x] Portable evidence download and standalone verifier
-- [x] Honest limitations displayed with results
+- [ ] Desktop/mobile browser visual QA, blocked by the approval reviewer's usage limit.
+- [ ] Four screenshots and recorded video; neither captured in this run.
+- [ ] Confirm event deadline, fields, reuse rules and mandatory Paytm integrations.
+- [ ] Team names, contacts and disclosure of pre-existing ArthaNiyam work.
+- [ ] Confirm repository visibility, publish approved changes and check CI. No push performed.
+- [ ] Optionally validate Docker independently; its demo remains reference mode.
+- [ ] Final video/repository links and organiser submission.
+- [ ] Broader language, negation and adversarial evaluation; Hindi status tracking remains a known gap.
 
-## External submission tasks — pending
+## Claim check
 
-- [ ] Confirm the official submission deadline and field limits
-- [ ] Add team-member names and contact details
-- [ ] Choose the final public GitHub repository visibility
-- [ ] Push and confirm the GitHub Actions workflow is green
-- [ ] Start Docker Desktop and confirm `docker compose up --build`
-- [ ] Choose a deployment host or state clearly that the project runs locally
-- [ ] Record a 90–120 second demo video
-- [ ] Capture one hero screenshot and one judge-scorecard screenshot
-- [ ] Add the public repository, deployment, and video links to the submission
-- [ ] Rehearse answers about bounded proof, synthetic metrics, and scaling
+Use: “A local prototype combining an LLM investigator, rules, human review and stateful financial controls.”
 
-## Final claim check
+Use: “Seven core development fixtures passed in the recorded run, three without inference. Hindi/Hinglish testing passed three of four.”
 
-Use these precise statements:
+Use: “Support payments and receipts are simulated.”
 
-- “ArthaNiyam found and blocked every attack in our included synthetic suite.”
-- “The fixed suite measured 100% attack recall and 0% false positives on its
-  four benign controls.”
-- “Twelve independently locked instances preserved a shared INR 50,000 budget.”
-- “The counterexample search is bounded to the configured number of actions.”
-- “The prototype rejects live payment keys and uses simulation or Test Mode.”
-
-Avoid claiming:
-
-- Production fraud accuracy
-- Unbounded formal correctness
-- Multi-host distributed safety
-- Regulatory certification
-- Production-ready human identity or authorization
+Do not claim production accuracy, universal prompt-injection resistance, deployed merchant impact or an implemented Paytm integration.
